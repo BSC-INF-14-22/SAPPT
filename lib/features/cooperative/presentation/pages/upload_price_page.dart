@@ -12,23 +12,29 @@ class UploadPricePage extends StatefulWidget {
 
 class _UploadPricePageState extends State<UploadPricePage> {
   final _formKey = GlobalKey<FormState>();
+  final _cropController = TextEditingController();
   final _marketController = TextEditingController();
   final _priceController = TextEditingController();
   final _notesController = TextEditingController();
   
-  String _selectedCrop = 'Maize';
   String _selectedUnit = 'kg';
   String _selectedDistrict = 'Lilongwe';
   bool _isLoading = false;
 
-  final List<String> _crops = ['Maize', 'Beans', 'Rice', 'Soybeans', 'Groundnuts', 'Tobacco'];
   final List<String> _units = ['kg', '50kg bag', 'Pail (Small)', 'Pail (Large)'];
   final List<String> _districts = [
     'Lilongwe', 'Blantyre', 'Mzuzu', 'Zomba', 'Dedza', 'Kasungu', 'Mangochi', 'Salima', 'Thyolo', 'Mulanje'
   ];
 
   Future<void> _handleSubmit() async {
+    final cropName = _cropController.text.trim();
     if (!_formKey.currentState!.validate()) return;
+    if (cropName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter or select a crop'), backgroundColor: Colors.red),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -36,8 +42,22 @@ class _UploadPricePageState extends State<UploadPricePage> {
       final user = AuthService().currentUser;
       if (user == null) throw Exception('You must be logged in to upload prices.');
 
+      // 1. Check if the crop exists in 'products', if not, add it immediately
+      final productQuery = await FirebaseFirestore.instance
+          .collection('products')
+          .where('name', isEqualTo: cropName)
+          .get();
+
+      if (productQuery.docs.isEmpty) {
+        await FirestoreService().addData('products', {
+          'name': cropName,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // 2. Submit the price entry
       final priceData = {
-        'cropName': _selectedCrop,
+        'cropName': cropName,
         'price': _priceController.text.trim(),
         'unit': _selectedUnit,
         'market': _marketController.text.trim(),
@@ -53,7 +73,7 @@ class _UploadPricePageState extends State<UploadPricePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Price uploaded successfully! Waiting for approval.'),
+            content: Text('Price uploaded successfully! Crop added if new.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -88,16 +108,50 @@ class _UploadPricePageState extends State<UploadPricePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Crop Dropdown
-              DropdownButtonFormField<String>(
-                value: _selectedCrop,
-                decoration: const InputDecoration(
-                  labelText: 'Crop Name',
-                  prefixIcon: Icon(Icons.grass),
-                  border: OutlineInputBorder(),
-                ),
-                items: _crops.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                onChanged: (val) => setState(() => _selectedCrop = val!),
+              // Crop Input (Autocomplete + Auto-Add)
+              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance.collection('products').snapshots(),
+                builder: (context, snapshot) {
+                  final productNames = snapshot.data?.docs
+                      .map((d) => d.data()['name'] as String)
+                      .toList() ?? [];
+
+                  return Autocomplete<String>(
+                    optionsBuilder: (TextEditingValue textEditingValue) {
+                      if (textEditingValue.text == '') {
+                        return const Iterable<String>.empty();
+                      }
+                      return productNames.where((String option) {
+                        return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                      });
+                    },
+                    onSelected: (String selection) {
+                      _cropController.text = selection;
+                    },
+                    fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                      // Sync the field controller with our state controller
+                      if (_cropController.text != controller.text && _cropController.text.isNotEmpty) {
+                        controller.text = _cropController.text;
+                      }
+                      controller.addListener(() {
+                        _cropController.text = controller.text;
+                      });
+
+                      return TextFormField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        decoration: const InputDecoration(
+                          labelText: 'Crop Name',
+                          hintText: 'Type to search or add new',
+                          prefixIcon: Icon(Icons.grass),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) => 
+                            (value == null || value.isEmpty) ? 'Enter or select a crop' : null,
+                      );
+                    },
+                  );
+                },
               ),
               const SizedBox(height: 16),
 

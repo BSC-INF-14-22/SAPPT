@@ -12,11 +12,9 @@ class FarmerTrendsPage extends StatefulWidget {
 }
 
 class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
-  String _selectedCrop = 'Maize';
+  String? _selectedCrop;
   String _timeframe = 'Weekly'; // Weekly or Monthly
   
-  final List<String> _crops = ['Maize', 'Beans', 'Rice', 'Soybeans'];
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -44,16 +42,38 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
   Widget _buildSelectors(ThemeData theme) {
     return Row(
       children: [
-        // Crop Selector
+        // Crop Selector (Dynamic from Firestore)
         Expanded(
-          child: DropdownButtonFormField<String>(
-            value: _selectedCrop,
-            decoration: const InputDecoration(
-              labelText: 'Crop',
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            items: _crops.map((crop) => DropdownMenuItem(value: crop, child: Text(crop))).toList(),
-            onChanged: (val) => setState(() => _selectedCrop = val!),
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection('products').snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) return Text('Error: ${snapshot.error}');
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const LinearProgressIndicator();
+              }
+
+              final productNames = snapshot.data?.docs
+                  .map((d) => d.data()['name'] as String)
+                  .toList() ?? [];
+              
+              productNames.sort();
+
+              if (_selectedCrop == null && productNames.isNotEmpty) {
+                _selectedCrop = productNames.first;
+              } else if (_selectedCrop != null && !productNames.contains(_selectedCrop)) {
+                _selectedCrop = productNames.first;
+              }
+
+              return DropdownButtonFormField<String>(
+                value: _selectedCrop,
+                decoration: const InputDecoration(
+                  labelText: 'Crop Filter',
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                items: productNames.map((crop) => DropdownMenuItem(value: crop, child: Text(crop))).toList(),
+                onChanged: (val) => setState(() => _selectedCrop = val),
+              );
+            },
           ),
         ),
         const SizedBox(width: 16),
@@ -116,14 +136,26 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
         stream: FirebaseFirestore.instance
             .collection('price_history')
             .where('cropName', isEqualTo: _selectedCrop)
-            .orderBy('date', descending: false)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final docs = snapshot.data?.docs ?? [];
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+
+          // Sort in-memory to avoid composite index requirement
+          final docs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snapshot.data?.docs ?? []);
+          docs.sort((a, b) {
+            final aTime = a.data()['date'] as Timestamp?;
+            final bTime = b.data()['date'] as Timestamp?;
+            if (aTime == null) return 1;
+            if (bTime == null) return -1;
+            return aTime.compareTo(bTime); // Ascending
+          });
+
           if (docs.isEmpty) {
             return const Center(child: Text('No historical data available.'));
           }
