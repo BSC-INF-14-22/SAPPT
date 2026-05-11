@@ -81,5 +81,23 @@ service cloud.firestore {
                     && resource.data.uid == request.auth.uid 
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readStatus']);
     }
+
+    // ==========================================
+    // PRODUCTS COLLECTION
+    // ==========================================
+    
+    match /products/{productId} {
+      // Any signed-in user can read the list of available products
+      allow read: if isSignedIn();
+    }
+
+    // ==========================================
+    // PRICE HISTORY COLLECTION
+    // ==========================================
+    
+    match /price_history/{historyId} {
+      // Any signed-in user can read price trends/history
+      allow read: if isSignedIn();
+    }
   }
 }

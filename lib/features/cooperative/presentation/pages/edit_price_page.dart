@@ -21,22 +21,45 @@ class _EditPricePageState extends State<EditPricePage> {
   late TextEditingController _marketController;
   late TextEditingController _priceController;
   late TextEditingController _notesController;
-  
+
   late String _selectedCrop;
   late String _selectedUnit;
   late String _selectedDistrict;
   bool _isLoading = false;
 
-  final List<String> _crops = ['Maize', 'Beans', 'Rice', 'Soybeans', 'Groundnuts', 'Tobacco'];
-  final List<String> _units = ['kg', '50kg bag', 'Pail (Small)', 'Pail (Large)'];
+  final List<String> _crops = [
+    'Maize',
+    'Beans',
+    'Rice',
+    'Soybeans',
+    'Groundnuts',
+    'Tobacco',
+  ];
+  final List<String> _units = [
+    'kg',
+    '50kg bag',
+    'Pail (Small)',
+    'Pail (Large)',
+  ];
   final List<String> _districts = [
-    'Lilongwe', 'Blantyre', 'Mzuzu', 'Zomba', 'Dedza', 'Kasungu', 'Mangochi', 'Salima', 'Thyolo', 'Mulanje'
+    'Lilongwe',
+    'Blantyre',
+    'Mzuzu',
+    'Zomba',
+    'Dedza',
+    'Kasungu',
+    'Mangochi',
+    'Salima',
+    'Thyolo',
+    'Mulanje',
   ];
 
   @override
   void initState() {
     super.initState();
-    _marketController = TextEditingController(text: widget.initialData['market']);
+    _marketController = TextEditingController(
+      text: widget.initialData['market'],
+    );
     _priceController = TextEditingController(text: widget.initialData['price']);
     _notesController = TextEditingController(text: widget.initialData['notes']);
     _selectedCrop = widget.initialData['cropName'] ?? 'Maize';
@@ -57,9 +80,9 @@ class _EditPricePageState extends State<EditPricePage> {
         'market': _marketController.text.trim(),
         'district': _selectedDistrict,
         'notes': _notesController.text.trim(),
-        // Reset status to pending if it was approved? 
+        // Reset status to pending if it was approved?
         // User didn't specify, but usually edits require re-approval.
-        'status': 'pending', 
+        'status': 'pending',
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
@@ -93,9 +116,7 @@ class _EditPricePageState extends State<EditPricePage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Edit Price Entry'),
-      ),
+      appBar: AppBar(title: const Text('Edit Price Entry')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Form(
@@ -104,13 +125,17 @@ class _EditPricePageState extends State<EditPricePage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               DropdownButtonFormField<String>(
-                value: _crops.contains(_selectedCrop) ? _selectedCrop : _crops.first,
+                initialValue: _crops.contains(_selectedCrop)
+                    ? _selectedCrop
+                    : _crops.first,
                 decoration: const InputDecoration(
                   labelText: 'Crop Name',
                   prefixIcon: Icon(Icons.grass),
                   border: OutlineInputBorder(),
                 ),
-                items: _crops.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                items: _crops
+                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                    .toList(),
                 onChanged: (val) => setState(() => _selectedCrop = val!),
               ),
               const SizedBox(height: 16),
@@ -123,19 +148,23 @@ class _EditPricePageState extends State<EditPricePage> {
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
-                validator: (value) => 
+                validator: (value) =>
                     (value == null || value.isEmpty) ? 'Enter price' : null,
               ),
               const SizedBox(height: 16),
 
               DropdownButtonFormField<String>(
-                value: _units.contains(_selectedUnit) ? _selectedUnit : _units.first,
+                initialValue: _units.contains(_selectedUnit)
+                    ? _selectedUnit
+                    : _units.first,
                 decoration: const InputDecoration(
                   labelText: 'Measurement Unit',
                   prefixIcon: Icon(Icons.scale),
                   border: OutlineInputBorder(),
                 ),
-                items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                items: _units
+                    .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                    .toList(),
                 onChanged: (val) => setState(() => _selectedUnit = val!),
               ),
               const SizedBox(height: 16),
@@ -147,19 +176,24 @@ class _EditPricePageState extends State<EditPricePage> {
                   prefixIcon: Icon(Icons.storefront),
                   border: OutlineInputBorder(),
                 ),
-                validator: (value) => 
-                    (value == null || value.isEmpty) ? 'Enter market name' : null,
+                validator: (value) => (value == null || value.isEmpty)
+                    ? 'Enter market name'
+                    : null,
               ),
               const SizedBox(height: 16),
 
               DropdownButtonFormField<String>(
-                value: _districts.contains(_selectedDistrict) ? _selectedDistrict : _districts.first,
+                initialValue: _districts.contains(_selectedDistrict)
+                    ? _selectedDistrict
+                    : _districts.first,
                 decoration: const InputDecoration(
                   labelText: 'District',
                   prefixIcon: Icon(Icons.location_on_outlined),
                   border: OutlineInputBorder(),
                 ),
-                items: _districts.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                items: _districts
+                    .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                    .toList(),
                 onChanged: (val) => setState(() => _selectedDistrict = val!),
               ),
               const SizedBox(height: 16),
@@ -185,11 +219,14 @@ class _EditPricePageState extends State<EditPricePage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: _isLoading 
-                    ? const CircularProgressIndicator(color: Colors.white) 
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
                     : const Text(
-                        'UPDATE PRICE', 
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
+                        'UPDATE PRICE',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
               ),
             ],

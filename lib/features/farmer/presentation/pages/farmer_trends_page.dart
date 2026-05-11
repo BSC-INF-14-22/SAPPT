@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:smart_agri_price_tracker/core/services/firestore_service.dart';
 
 class FarmerTrendsPage extends StatefulWidget {
   const FarmerTrendsPage({super.key});
@@ -14,7 +13,7 @@ class FarmerTrendsPage extends StatefulWidget {
 class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
   String _selectedCrop = 'Maize';
   String _timeframe = 'Weekly'; // Weekly or Monthly
-  
+
   final List<String> _crops = ['Maize', 'Beans', 'Rice', 'Soybeans'];
 
   @override
@@ -22,9 +21,7 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Price Trends'),
-      ),
+      appBar: AppBar(title: const Text('Price Trends')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
@@ -47,12 +44,14 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
         // Crop Selector
         Expanded(
           child: DropdownButtonFormField<String>(
-            value: _selectedCrop,
+            initialValue: _selectedCrop,
             decoration: const InputDecoration(
               labelText: 'Crop',
               contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
-            items: _crops.map((crop) => DropdownMenuItem(value: crop, child: Text(crop))).toList(),
+            items: _crops
+                .map((crop) => DropdownMenuItem(value: crop, child: Text(crop)))
+                .toList(),
             onChanged: (val) => setState(() => _selectedCrop = val!),
           ),
         ),
@@ -137,12 +136,16 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
                     showTitles: true,
                     getTitlesWidget: (value, meta) {
                       if (value.toInt() >= 0 && value.toInt() < docs.length) {
-                        final date = (docs[value.toInt()]['date'] as Timestamp).toDate();
+                        final date = (docs[value.toInt()]['date'] as Timestamp)
+                            .toDate();
                         return Padding(
                           padding: const EdgeInsets.only(top: 8.0),
                           child: Text(
                             DateFormat('dd/MM').format(date),
-                            style: const TextStyle(fontSize: 10, color: Colors.grey),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey,
+                            ),
                           ),
                         );
                       }
@@ -161,14 +164,19 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
                     reservedSize: 40,
                   ),
                 ),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
               ),
               borderData: FlBorderData(show: false),
               lineBarsData: [
                 LineChartBarData(
                   spots: docs.asMap().entries.map((e) {
-                    final price = double.tryParse(e.value['price'].toString()) ?? 0;
+                    final price =
+                        double.tryParse(e.value['price'].toString()) ?? 0;
                     return FlSpot(e.key.toDouble(), price);
                   }).toList(),
                   isCurved: true,
@@ -195,7 +203,9 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
       children: [
         Text(
           'Quick Stats',
-          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
         ),
         const SizedBox(height: 16),
         Row(
@@ -221,7 +231,12 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
+  Widget _buildStatCard(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -235,7 +250,10 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
           children: [
             Icon(icon, color: color, size: 20),
             const SizedBox(height: 8),
-            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
             Text(
               value,
               style: TextStyle(

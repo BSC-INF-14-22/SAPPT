@@ -19,6 +19,71 @@ class NotificationsPage extends StatelessWidget {
     }
   }
 
+  void _showNotificationDetail(BuildContext context, String title, String message, String date) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              date,
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+            ),
+            const Divider(height: 32),
+            Text(
+              message,
+              style: const TextStyle(
+                fontSize: 16,
+                height: 1.6,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Close'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -36,7 +101,6 @@ class NotificationsPage extends StatelessWidget {
         stream: FirebaseFirestore.instance
             .collection('notifications')
             .where('uid', isEqualTo: user.uid)
-            .orderBy('createdAt', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -44,13 +108,11 @@ class NotificationsPage extends StatelessWidget {
           }
 
           if (snapshot.hasError) {
-            // Firestore requires an index for compound queries (where + orderBy).
-            // If the index is missing, it will throw an error with a direct link to create it.
             return Padding(
               padding: const EdgeInsets.all(16.0),
               child: Center(
                 child: Text(
-                  'Error loading notifications. If this is a new feature, you may need to click the link in the debug console to create a Firestore Index.',
+                  'Error loading notifications: ${snapshot.error}',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: theme.colorScheme.error),
                 ),
@@ -58,7 +120,15 @@ class NotificationsPage extends StatelessWidget {
             );
           }
 
-          final docs = snapshot.data?.docs ?? [];
+          // Sort in-memory to avoid composite index requirement
+          final docs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snapshot.data?.docs ?? []);
+          docs.sort((a, b) {
+            final aTime = a.data()['createdAt'] as Timestamp?;
+            final bTime = b.data()['createdAt'] as Timestamp?;
+            if (aTime == null) return 1;
+            if (bTime == null) return -1;
+            return bTime.compareTo(aTime);
+          });
 
           if (docs.isEmpty) {
             return Center(
@@ -187,6 +257,7 @@ class NotificationsPage extends StatelessWidget {
           if (!isRead) {
             _markAsRead(docId);
           }
+          _showNotificationDetail(context, title, message, formattedDate);
         },
       ),
     );
