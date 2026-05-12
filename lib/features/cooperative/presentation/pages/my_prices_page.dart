@@ -46,7 +46,7 @@ class MyPricesPage extends StatelessWidget {
                     color: Colors.grey[300],
                   ),
                   const SizedBox(height: 16),
-                  const Text('You haven\'t submitted any prices yet.'),
+                  const Text("You haven't submitted any prices yet."),
                 ],
               ),
             );
