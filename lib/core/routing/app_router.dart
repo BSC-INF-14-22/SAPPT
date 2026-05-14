@@ -14,6 +14,7 @@ import 'package:smart_agri_price_tracker/features/admin/presentation/pages/manag
 import 'package:smart_agri_price_tracker/features/admin/presentation/pages/price_approval_page.dart';
 import 'package:smart_agri_price_tracker/features/admin/presentation/pages/admin_analytics_page.dart';
 import 'package:smart_agri_price_tracker/features/shared/presentation/pages/notifications_page.dart';
+import 'package:smart_agri_price_tracker/features/shared/presentation/pages/profile_page.dart';
 import 'package:smart_agri_price_tracker/core/services/auth_wrapper.dart';
 
 class AppRouter {
@@ -33,6 +34,7 @@ class AppRouter {
   static const String priceApproval = '/price-approval';
   static const String adminAnalytics = '/admin-analytics';
   static const String notifications = '/notifications';
+  static const String profile = '/profile';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -94,6 +96,11 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) =>
               EditPricePage(docId: args['docId'], initialData: args['data']),
+        );
+      case profile:
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => ProfilePage(userData: args),
         );
       default:
         return MaterialPageRoute(

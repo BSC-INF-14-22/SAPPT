@@ -91,6 +91,11 @@ class FirestoreService {
     }
   }
 
+  /// Get user stream by UID
+  Stream<DocumentSnapshot<Map<String, dynamic>>> getUserStream(String uid) {
+    return _db.collection('users').doc(uid).snapshots();
+  }
+
   /// Method to test connection by writing and reading from a test collection
   Future<bool> testConnection() async {
     try {

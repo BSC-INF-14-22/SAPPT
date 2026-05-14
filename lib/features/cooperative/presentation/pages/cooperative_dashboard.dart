@@ -19,15 +19,22 @@ class CooperativeDashboard extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Cooperative Dashboard'),
         actions: [
-          IconButton(
-            onPressed: () async {
-              await AuthService().signOut();
-              if (context.mounted) {
-                Navigator.of(context).pushReplacementNamed(AppRouter.home);
-              }
-            },
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
+          Container(
+            margin: const EdgeInsets.only(right: 8, top: 8, bottom: 8),
+            decoration: BoxDecoration(
+              color: Colors.red.withAlpha(30),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              onPressed: () async {
+                await AuthService().signOut();
+                if (context.mounted) {
+                  Navigator.of(context).pushReplacementNamed(AppRouter.home);
+                }
+              },
+              icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+              tooltip: 'Logout',
+            ),
           ),
         ],
       ),
@@ -37,49 +44,127 @@ class CooperativeDashboard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Welcome Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Welcome, $name',
-                      style: textTheme.headlineMedium?.copyWith(
-                        color: theme.primaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    theme.primaryColor.withAlpha(200),
+                    theme.primaryColor,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.primaryColor.withAlpha(80),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.badge, size: 16, color: Colors.grey),
-                        const SizedBox(width: 4),
                         Text(
-                          'Cooperative Officer - $district',
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: Colors.grey[700],
+                          'Welcome back,',
+                          style: textTheme.bodyLarge?.copyWith(
+                            color: const Color(0xFFFFFFFF).withAlpha(180),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        Text(
+                          name,
+                          style: textTheme.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color.fromARGB(
+                              255,
+                              66,
+                              62,
+                              62,
+                            ).withAlpha(40),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.badge,
+                                size: 14,
+                                color: Color.fromARGB(255, 255, 255, 255),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Officer - $district',
+                                style: textTheme.bodySmall?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-                GestureDetector(
-                  onTap: () => _showProfileDialog(context, name, userData),
-                  child: CircleAvatar(
-                    radius: 24,
-                    backgroundColor: theme.primaryColor.withAlpha(30),
-                    child: Text(
-                      name[0].toUpperCase(),
-                      style: TextStyle(
-                        color: theme.primaryColor,
-                        fontWeight: FontWeight.bold,
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pushNamed(
+                      context,
+                      AppRouter.profile,
+                      arguments: userData,
+                    ),
+                    child: Hero(
+                      tag: 'profile_avatar',
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(40),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: CircleAvatar(
+                          radius: 32,
+                          backgroundColor: Colors.white,
+                          backgroundImage: userData['photoUrl'] != null
+                              ? NetworkImage(userData['photoUrl'])
+                              : null,
+                          child: userData['photoUrl'] == null
+                              ? Text(
+                                  name[0].toUpperCase(),
+                                  style: TextStyle(
+                                    color: theme.primaryColor,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 24,
+                                  ),
+                                )
+                              : null,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 32),
 
@@ -130,7 +215,7 @@ class CooperativeDashboard extends StatelessWidget {
                       context,
                       'Notifications',
                       Icons.notifications_active_outlined,
-                      Colors.red,
+                      const Color.fromARGB(255, 119, 105, 22),
                       () =>
                           Navigator.pushNamed(context, AppRouter.notifications),
                       notificationCount: snapshot.data ?? 0,
@@ -138,14 +223,6 @@ class CooperativeDashboard extends StatelessWidget {
                   },
                 ),
               ],
-            ),
-            const SizedBox(height: 16),
-
-            // Large Profile Card
-            _buildProfileCard(
-              context,
-              theme,
-              () => _showProfileDialog(context, name, userData),
             ),
           ],
         ),
@@ -173,29 +250,64 @@ class CooperativeDashboard extends StatelessWidget {
           if (index == 1) {
             Navigator.pushNamed(context, AppRouter.myPrices);
           } else if (index == 2) {
-            _showProfileDialog(context, name, userData);
+            _showUserInfoDialog(context);
           }
         },
       ),
     );
   }
 
-  void _showProfileDialog(
-    BuildContext context,
-    String name,
-    Map<String, dynamic> userData,
-  ) {
+  void _showUserInfoDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Officer Profile'),
-        content: Text(
-          'Name: $name\nRole: Cooperative Officer\nDistrict: ${userData['district'] ?? 'Not Set'}\nEmail: ${userData['email'] ?? 'N/A'}',
+        title: const Text('Member Profile'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoRow(Icons.person, 'Name', userData['fullName'] ?? 'N/A'),
+            _buildInfoRow(Icons.badge, 'Role', 'Cooperative Officer'),
+            _buildInfoRow(
+              Icons.location_on,
+              'District',
+              userData['district'] ?? 'Not Set',
+            ),
+            _buildInfoRow(Icons.email, 'Email', userData['email'] ?? 'N/A'),
+          ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.green),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -284,30 +396,6 @@ class CooperativeDashboard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildProfileCard(
-    BuildContext context,
-    ThemeData theme,
-    VoidCallback onTap,
-  ) {
-    return Card(
-      elevation: 2,
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        leading: CircleAvatar(
-          backgroundColor: theme.primaryColor.withAlpha(30),
-          child: const Icon(Icons.person, color: Color(0xFF2E7D32)),
-        ),
-        title: const Text(
-          'My Profile',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: const Text('Account & Office Settings'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
       ),
     );
   }

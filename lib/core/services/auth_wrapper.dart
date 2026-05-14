@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:smart_agri_price_tracker/core/services/auth_service.dart';
 import 'package:smart_agri_price_tracker/core/services/firestore_service.dart';
@@ -20,7 +21,7 @@ class AuthWrapper extends StatelessWidget {
         }
 
         final user = snapshot.data;
-        
+
         // If not logged in, go straight to Landing Page
         if (user == null) {
           // If connection is still waiting, we might show a splash but Landing is safer to prevent black screen
@@ -28,21 +29,24 @@ class AuthWrapper extends StatelessWidget {
         }
 
         // If logged in, fetch role
-        return FutureBuilder<Map<String, dynamic>?>(
-          future: FirestoreService().getUserByUid(user.uid),
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirestoreService().getUserStream(user.uid),
           builder: (context, roleSnapshot) {
             if (roleSnapshot.connectionState == ConnectionState.waiting) {
               return _buildLoadingScreen(context, 'Fetching your profile...');
             }
 
             if (roleSnapshot.hasError) {
-              return _buildErrorScreen(context, 'Database Error: ${roleSnapshot.error}');
+              return _buildErrorScreen(
+                context,
+                'Database Error: ${roleSnapshot.error}',
+              );
             }
 
-            if (roleSnapshot.hasData && roleSnapshot.data != null) {
-              final userData = roleSnapshot.data!;
+            if (roleSnapshot.hasData && roleSnapshot.data!.exists) {
+              final userData = roleSnapshot.data!.data()!;
               final role = userData['role'];
-              
+
               switch (role) {
                 case 'Farmer':
                   return FarmerDashboard(userData: userData);
@@ -57,7 +61,7 @@ class AuthWrapper extends StatelessWidget {
 
             // User authenticated but no profile found
             return _buildErrorScreen(
-              context, 
+              context,
               'Profile not found. Please try logging out and registering again.',
               showLogout: true,
             );
@@ -82,7 +86,11 @@ class AuthWrapper extends StatelessWidget {
     );
   }
 
-  Widget _buildErrorScreen(BuildContext context, String message, {bool showLogout = true}) {
+  Widget _buildErrorScreen(
+    BuildContext context,
+    String message, {
+    bool showLogout = true,
+  }) {
     return Scaffold(
       body: Padding(
         padding: const EdgeInsets.all(32.0),

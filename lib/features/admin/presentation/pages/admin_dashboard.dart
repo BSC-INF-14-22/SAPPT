@@ -43,32 +43,27 @@ class AdminDashboard extends StatelessWidget {
             Row(
               children: [
                 GestureDetector(
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Admin Profile'),
-                        content: Text('Name: $name\nRole: Administrator\nEmail: ${userData['email'] ?? 'N/A'}'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Close'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                  onTap: () => Navigator.pushNamed(
+                    context,
+                    AppRouter.profile,
+                    arguments: userData,
+                  ),
                   child: CircleAvatar(
                     radius: 30,
                     backgroundColor: theme.primaryColor.withAlpha(30),
-                    child: Text(
-                      name[0].toUpperCase(),
-                      style: TextStyle(
-                        color: theme.primaryColor, 
-                        fontWeight: FontWeight.bold,
-                        fontSize: 24,
-                      ),
-                    ),
+                    backgroundImage: userData['photoUrl'] != null 
+                        ? NetworkImage(userData['photoUrl']) 
+                        : null,
+                    child: userData['photoUrl'] == null
+                        ? Text(
+                            name[0].toUpperCase(),
+                            style: TextStyle(
+                              color: theme.primaryColor, 
+                              fontWeight: FontWeight.bold,
+                              fontSize: 24,
+                            ),
+                          )
+                        : null,
                   ),
                 ),
                 const SizedBox(width: 16),

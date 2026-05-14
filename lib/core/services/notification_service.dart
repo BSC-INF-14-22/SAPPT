@@ -28,18 +28,20 @@ class NotificationService {
       debugPrint('User granted permission');
       // 2. Get and save token
       await saveTokenToDatabase();
-      
+
       // 3. Listen to token refreshes
       _fcm.onTokenRefresh.listen((newToken) {
         _updateTokenInFirestore(newToken);
       });
-      
+
       // 4. Handle foreground messages
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         debugPrint('Got a message whilst in the foreground!');
         debugPrint('Message data: ${message.data}');
         if (message.notification != null) {
-          debugPrint('Message also contained a notification: ${message.notification}');
+          debugPrint(
+            'Message also contained a notification: ${message.notification}',
+          );
           // Usually handled by flutter_local_notifications if you want a heads-up display
         }
       });
@@ -52,7 +54,7 @@ class NotificationService {
   Future<void> saveTokenToDatabase() async {
     final user = _auth.currentUser;
     if (user == null) return;
-    
+
     try {
       String? token = await _fcm.getToken();
       if (token != null) {
@@ -68,14 +70,14 @@ class NotificationService {
     if (user == null) return;
 
     await _db.collection('users').doc(user.uid).set({
-      'fcmTokens': FieldValue.arrayUnion([token])
+      'fcmTokens': FieldValue.arrayUnion([token]),
     }, SetOptions(merge: true));
   }
 
   // ==========================================
   // IN-APP NOTIFICATION BUILDERS
   // ==========================================
-  
+
   /// Sends a targeted in-app notification (e.g., Price Approved/Rejected)
   Future<void> sendInAppNotification({
     required String uid,
@@ -100,8 +102,11 @@ class NotificationService {
     // Note: In a production app, writing to thousands of users client-side is inefficient.
     // This should ideally trigger a Cloud Function that handles the fan-out.
     // For this prototype, we will fetch the users and write directly.
-    final usersSnapshot = await _db.collection('users').where('role', isEqualTo: role).get();
-    
+    final usersSnapshot = await _db
+        .collection('users')
+        .where('role', isEqualTo: role)
+        .get();
+
     final batch = _db.batch();
     for (var doc in usersSnapshot.docs) {
       final notificationRef = _db.collection('notifications').doc();
@@ -122,12 +127,12 @@ class NotificationService {
     required String message,
   }) async {
     final usersSnapshot = await _db.collection('users').get();
-    
+
     // Firestore batch limits to 500 operations. We'll chunk it if necessary.
     // Assuming < 500 users for this demo.
     final batch = _db.batch();
     int count = 0;
-    
+
     for (var doc in usersSnapshot.docs) {
       if (count >= 500) break; // Safety limit for demo
       final notificationRef = _db.collection('notifications').doc();
@@ -141,5 +146,17 @@ class NotificationService {
       count++;
     }
     await batch.commit();
+  }
+  /// Returns a stream of the number of unread notifications for the current user
+  Stream<int> getUnreadCountStream() {
+    final user = _auth.currentUser;
+    if (user == null) return Stream.value(0);
+
+    return _db
+        .collection('notifications')
+        .where('uid', isEqualTo: user.uid)
+        .where('readStatus', isEqualTo: false)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.length);
   }
 }
