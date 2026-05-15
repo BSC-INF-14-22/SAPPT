@@ -150,13 +150,12 @@ class AdminDashboard extends StatelessWidget {
                   onTap: () => Navigator.pushNamed(context, AppRouter.marketPrices),
                 ),
                 _buildStatCard(
-                  'Reports',
-                  null, // Placeholder
+                  'Analytics',
+                  'products', 
                   null,
                   null,
                   Icons.analytics_rounded,
                   Colors.indigo,
-                  valueOverride: '12',
                   onTap: () => Navigator.pushNamed(context, AppRouter.adminAnalytics),
                 ),
               ],
