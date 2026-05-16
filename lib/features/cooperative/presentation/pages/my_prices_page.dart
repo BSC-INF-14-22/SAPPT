@@ -132,18 +132,92 @@ class MyPricesPage extends StatelessWidget {
             Text('Submitted: $formattedDate', style: const TextStyle(fontSize: 12)),
           ],
         ),
-        trailing: Icon(
-          canEdit ? Icons.edit_outlined : Icons.chevron_right, 
-          color: canEdit ? theme.primaryColor : Colors.grey,
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) {
+            if (value == 'edit') {
+              Navigator.pushNamed(
+                context, 
+                '/edit-price', 
+                arguments: {'docId': docId, 'data': data},
+              );
+            } else if (value == 'delete') {
+              _showDeleteConfirmation(context, docId, cropName);
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'edit',
+              child: Row(
+                children: [
+                  Icon(Icons.edit, size: 20),
+                  SizedBox(width: 8),
+                  Text('Edit'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  Icon(Icons.delete, size: 20, color: Colors.red),
+                  SizedBox(width: 8),
+                  Text('Delete', style: TextStyle(color: Colors.red)),
+                ],
+              ),
+            ),
+          ],
         ),
-        onTap: canEdit 
-          ? () => Navigator.pushNamed(
-              context, 
-              '/edit-price', 
-              arguments: {'docId': docId, 'data': data},
-            )
-          : null,
+      ),
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context, String docId, String cropName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Deletion'),
+        content: Text('Are you sure you want to delete the price entry for $cropName? This will also remove the crop from the global products catalog.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                // 1. Delete the price entry
+                await FirestoreService().deleteData('prices', docId);
+                
+                // 2. Delete the associated product from the catalog
+                final productQuery = await FirebaseFirestore.instance
+                    .collection('products')
+                    .where('name', isEqualTo: cropName)
+                    .get();
+                    
+                for (var doc in productQuery.docs) {
+                  await FirestoreService().deleteData('products', doc.id);
+                }
+
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Price entry and product deleted successfully.'), backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
   }
 }
+

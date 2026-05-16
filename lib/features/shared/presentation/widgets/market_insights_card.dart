@@ -10,9 +10,9 @@ class MarketInsightsCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirestoreService().getFilteredCollectionStream('prices', 'status', 'approved'),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+      stream: FirebaseFirestore.instance.collection('products').snapshots(),
+      builder: (context, productsSnapshot) {
+        if (productsSnapshot.connectionState == ConnectionState.waiting) {
           return const Card(
             child: Padding(
               padding: EdgeInsets.all(16),
@@ -21,10 +21,30 @@ class MarketInsightsCard extends StatelessWidget {
           );
         }
 
-        final docs = snapshot.data?.docs ?? [];
-        if (docs.isEmpty) {
-          return const SizedBox.shrink(); // No data to analyze
-        }
+        final registeredProducts = productsSnapshot.data?.docs
+            .map((d) => d.data()['name'].toString().toLowerCase())
+            .toSet() ?? {};
+
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirestoreService().getFilteredCollectionStream('prices', 'status', 'approved'),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              );
+            }
+
+            final docs = snapshot.data?.docs.where((doc) {
+              final cropName = (doc.data()['cropName'] ?? '').toString();
+              return registeredProducts.contains(cropName.toLowerCase());
+            }).toList() ?? [];
+
+            if (docs.isEmpty) {
+              return const SizedBox.shrink(); // No data to analyze
+            }
 
         // Statistical Model: Premium Variance Analysis
         // Identifies the crop with the highest price premium relative to its own moving average
@@ -153,6 +173,8 @@ class MarketInsightsCard extends StatelessWidget {
               ],
             ),
           ),
+        );
+          },
         );
       },
     );

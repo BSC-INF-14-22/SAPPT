@@ -27,20 +27,7 @@ class _EditPricePageState extends State<EditPricePage> {
   late String _selectedDistrict;
   bool _isLoading = false;
 
-  final List<String> _crops = [
-    'Maize',
-    'Beans',
-    'Rice',
-    'Soybeans',
-    'Groundnuts',
-    'Tobacco',
-  ];
-  final List<String> _units = [
-    'kg',
-    '50kg bag',
-    'Pail (Small)',
-    'Pail (Large)',
-  ];
+  final List<String> _units = ['kg', '50kg bag', 'Pail (Small)', 'Pail (Large)'];
   final List<String> _districts = [
     'Lilongwe',
     'Blantyre',
@@ -124,19 +111,29 @@ class _EditPricePageState extends State<EditPricePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              DropdownButtonFormField<String>(
-                initialValue: _crops.contains(_selectedCrop)
-                    ? _selectedCrop
-                    : _crops.first,
-                decoration: const InputDecoration(
-                  labelText: 'Crop Name',
-                  prefixIcon: Icon(Icons.grass),
-                  border: OutlineInputBorder(),
-                ),
-                items: _crops
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                    .toList(),
-                onChanged: (val) => setState(() => _selectedCrop = val!),
+              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance.collection('products').snapshots(),
+                builder: (context, snapshot) {
+                  final registeredCrops = snapshot.data?.docs
+                      .map((d) => d.data()['name'] as String)
+                      .toList() ?? [];
+
+                  // Ensure the currently selected crop is in the list, or add it temporarily if it's missing (to avoid crash)
+                  if (_selectedCrop.isNotEmpty && !registeredCrops.contains(_selectedCrop)) {
+                    registeredCrops.insert(0, _selectedCrop);
+                  }
+
+                  return DropdownButtonFormField<String>(
+                    value: registeredCrops.contains(_selectedCrop) ? _selectedCrop : (registeredCrops.isNotEmpty ? registeredCrops.first : null),
+                    decoration: const InputDecoration(
+                      labelText: 'Crop Name',
+                      prefixIcon: Icon(Icons.grass),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: registeredCrops.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                    onChanged: (val) => setState(() => _selectedCrop = val!),
+                  );
+                },
               ),
               const SizedBox(height: 16),
 

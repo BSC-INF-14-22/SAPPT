@@ -151,7 +151,7 @@ class AdminDashboard extends StatelessWidget {
                 ),
                 _buildStatCard(
                   'Analytics',
-                  'products', 
+                  'products',
                   null,
                   null,
                   Icons.analytics_rounded,

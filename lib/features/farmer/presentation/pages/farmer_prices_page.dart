@@ -65,77 +65,96 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
           
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirestoreService().getFilteredCollectionStream('prices', 'status', 'approved'),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+              stream: FirebaseFirestore.instance.collection('products').snapshots(),
+              builder: (context, productsSnapshot) {
+                if (productsSnapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
+                final registeredProducts = productsSnapshot.data?.docs
+                    .map((d) => d.data()['name'].toString().toLowerCase())
+                    .toSet() ?? {};
 
-                final docs = snapshot.data?.docs ?? [];
-
-                if (docs.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.store_mall_directory_outlined, size: 64, color: Colors.grey[400]),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No active markets found.',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                // Group data by Market and Location
-                // Key format: "MarketName|District"
-                final Map<String, List<Map<String, dynamic>>> marketGroups = {};
-
-                for (var doc in docs) {
-                  final data = doc.data();
-                  final market = (data['market'] ?? 'Unknown Market').toString().trim();
-                  final district = (data['district'] ?? 'Not Specified').toString().trim();
-                  
-                  // Filter by search query
-                  if (_searchQuery.isNotEmpty) {
-                    if (!market.toLowerCase().contains(_searchQuery) && 
-                        !district.toLowerCase().contains(_searchQuery)) {
-                      continue; // Skip this entry if it doesn't match the filter
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirestoreService().getFilteredCollectionStream('prices', 'status', 'approved'),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
                     }
-                  }
 
-                  final key = '$market|$district';
-                  if (!marketGroups.containsKey(key)) {
-                    marketGroups[key] = [];
-                  }
-                  marketGroups[key]!.add(data);
-                }
+                    if (snapshot.hasError) {
+                      return Center(child: Text('Error: ${snapshot.error}'));
+                    }
 
-                if (marketGroups.isEmpty) {
-                  return Center(
-                    child: Text('No markets match your search.', style: TextStyle(color: Colors.grey[600])),
-                  );
-                }
+                    final docs = snapshot.data?.docs ?? [];
 
-                final groupedKeys = marketGroups.keys.toList()..sort();
+                    if (docs.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.store_mall_directory_outlined, size: 64, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No active markets found.',
+                              style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  itemCount: groupedKeys.length,
-                  itemBuilder: (context, index) {
-                    final key = groupedKeys[index];
-                    final parts = key.split('|');
-                    final marketName = parts[0];
-                    final district = parts[1];
-                    final products = marketGroups[key]!;
+                    // Group data by Market and Location
+                    final Map<String, List<Map<String, dynamic>>> marketGroups = {};
 
-                    return _buildMarketCard(context, marketName, district, products);
+                    for (var doc in docs) {
+                      final data = doc.data();
+                      final cropName = (data['cropName'] ?? '').toString();
+                      
+                      // Check if crop is registered in 'products' collection
+                      if (!registeredProducts.contains(cropName.toLowerCase())) {
+                        continue;
+                      }
+
+                      final market = (data['market'] ?? 'Unknown Market').toString().trim();
+                      final district = (data['district'] ?? 'Not Specified').toString().trim();
+                      
+                      // Filter by search query
+                      if (_searchQuery.isNotEmpty) {
+                        if (!market.toLowerCase().contains(_searchQuery) && 
+                            !district.toLowerCase().contains(_searchQuery)) {
+                          continue;
+                        }
+                      }
+
+                      final key = '$market|$district';
+                      if (!marketGroups.containsKey(key)) {
+                        marketGroups[key] = [];
+                      }
+                      marketGroups[key]!.add(data);
+                    }
+
+                    if (marketGroups.isEmpty) {
+                      return Center(
+                        child: Text('No markets match your criteria.', style: TextStyle(color: Colors.grey[600])),
+                      );
+                    }
+
+                    final groupedKeys = marketGroups.keys.toList()..sort();
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      itemCount: groupedKeys.length,
+                      itemBuilder: (context, index) {
+                        final key = groupedKeys[index];
+                        final parts = key.split('|');
+                        final marketName = parts[0];
+                        final district = parts[1];
+                        final productsList = marketGroups[key]!;
+
+                        return _buildMarketCard(context, marketName, district, productsList);
+                      },
+                    );
                   },
                 );
               },
@@ -234,15 +253,45 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Icon(Icons.eco, size: 16, color: Colors.green[600]),
-                          const SizedBox(width: 8),
-                          Text(
-                            cropName,
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                          ),
-                        ],
+                      Expanded(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.eco, size: 16, color: Colors.green[600]),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    cropName,
+                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                                  ),
+                                  if (product['uploadedBy'] != null)
+                                    FutureBuilder<Map<String, dynamic>?>(
+                                      future: FirestoreService().getUserByUid(product['uploadedBy']),
+                                      builder: (context, userSnapshot) {
+                                        if (userSnapshot.connectionState == ConnectionState.waiting) {
+                                          return const Text('Loading cooperative...', style: TextStyle(fontSize: 11, color: Colors.grey));
+                                        }
+                                        final coopName = userSnapshot.data?['fullName'] ?? 'Unknown Cooperative';
+                                        return Text(
+                                          'By: $coopName',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                            color: theme.primaryColor,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        );
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,

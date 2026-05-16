@@ -11,9 +11,15 @@ class FarmerTrendsPage extends StatefulWidget {
 }
 
 class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
+<<<<<<< HEAD
+  String _selectedCrop = 'Maize';
+  String _timeframe = 'Weekly'; // Daily, Weekly, or Monthly
+
+=======
   String? _selectedCrop;
   String _timeframe = 'Weekly'; // Weekly or Monthly
   
+>>>>>>> BSC-INF-15-21
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -31,19 +37,12 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
               stream: FirebaseFirestore.instance
                   .collection('price_history')
                   .where('cropName', isEqualTo: _selectedCrop)
+<<<<<<< HEAD
+                  .orderBy('date', descending: false)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(40.0),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                }
-
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
+                  return const Center(child: CircularProgressIndicator());
                 }
 
                 final allDocs = snapshot.data?.docs ?? [];
@@ -63,16 +62,31 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
                     break;
                 }
 
-                final filteredDocs = allDocs.where((doc) {
+                final docs = allDocs.where((doc) {
                   if (doc.data().containsKey('date') && doc['date'] != null) {
                     final date = (doc['date'] as Timestamp).toDate();
                     return date.isAfter(startDate);
                   }
                   return false;
                 }).toList();
+=======
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(40.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
 
                 // Sort in-memory to avoid composite index requirement
-                final docs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(filteredDocs);
+                final docs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snapshot.data?.docs ?? []);
                 docs.sort((a, b) {
                   final aTime = a.data()['date'] as Timestamp?;
                   final bTime = b.data()['date'] as Timestamp?;
@@ -95,13 +109,20 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
                 final highest = prices.reduce((a, b) => a > b ? a : b);
                 final lowest = prices.reduce((a, b) => a < b ? a : b);
                 final projection = _generateProjection(docs);
+>>>>>>> BSC-INF-15-21
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+<<<<<<< HEAD
+                    _buildChartSection(theme, docs),
+                    const SizedBox(height: 32),
+                    _buildStatsSection(theme, docs),
+=======
                     _buildChart(theme, docs),
                     const SizedBox(height: 32),
                     _buildStatsSection(theme, highest, lowest, projection),
+>>>>>>> BSC-INF-15-21
                   ],
                 );
               },
@@ -116,38 +137,84 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Crop Selector (Dynamic from Firestore)
+<<<<<<< HEAD
+        // Crop Selector
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance.collection('products').snapshots(),
           builder: (context, snapshot) {
-            if (snapshot.hasError) return Text('Error: ${snapshot.error}');
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const LinearProgressIndicator();
-            }
-
             final productNames = snapshot.data?.docs
                 .map((d) => d.data()['name'] as String)
                 .toList() ?? [];
-            
-            productNames.sort();
 
-            if (_selectedCrop == null && productNames.isNotEmpty) {
-              _selectedCrop = productNames.first;
-            } else if (_selectedCrop != null && !productNames.contains(_selectedCrop)) {
+            // If list is empty, just show a disabled dropdown or default
+            if (productNames.isEmpty) {
+              return DropdownButtonFormField<String>(
+                value: null,
+                decoration: const InputDecoration(
+                  labelText: 'Crop',
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                items: const [],
+                onChanged: null,
+              );
+            }
+
+            // Ensure _selectedCrop is valid
+            if (!productNames.contains(_selectedCrop)) {
               _selectedCrop = productNames.first;
             }
 
             return DropdownButtonFormField<String>(
               value: _selectedCrop,
               decoration: const InputDecoration(
-                labelText: 'Crop Filter',
+                labelText: 'Crop',
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
-              items: productNames.map((crop) => DropdownMenuItem(value: crop, child: Text(crop))).toList(),
-              onChanged: (val) => setState(() => _selectedCrop = val),
+              items: productNames
+                  .map((crop) => DropdownMenuItem(value: crop, child: Text(crop)))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedCrop = val);
+                }
+              },
             );
           },
-        ),
+=======
+        // Crop Selector (Dynamic from Firestore)
+        Expanded(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection('products').snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) return Text('Error: ${snapshot.error}');
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const LinearProgressIndicator();
+              }
+
+              final productNames = snapshot.data?.docs
+                  .map((d) => d.data()['name'] as String)
+                  .toList() ?? [];
+              
+              productNames.sort();
+
+              if (_selectedCrop == null && productNames.isNotEmpty) {
+                _selectedCrop = productNames.first;
+              } else if (_selectedCrop != null && !productNames.contains(_selectedCrop)) {
+                _selectedCrop = productNames.first;
+              }
+
+              return DropdownButtonFormField<String>(
+                value: _selectedCrop,
+                decoration: const InputDecoration(
+                  labelText: 'Crop Filter',
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                items: productNames.map((crop) => DropdownMenuItem(value: crop, child: Text(crop))).toList(),
+                onChanged: (val) => setState(() => _selectedCrop = val),
+              );
+            },
+          ),
+>>>>>>> BSC-INF-15-21
         ),
         const SizedBox(height: 16),
         // Timeframe Toggle
@@ -195,6 +262,27 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
     );
   }
 
+<<<<<<< HEAD
+  Widget _buildChartSection(ThemeData theme, List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    if (docs.isEmpty) {
+      return Container(
+        height: 300,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(13),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const Center(child: Text('No historical data available for this timeframe.')),
+      );
+    }
+
+=======
   String _generateProjection(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
     if (docs.length < 3) return 'Collecting more data for accurate projections...';
 
@@ -239,6 +327,7 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
   }
 
   Widget _buildChart(ThemeData theme, List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+>>>>>>> BSC-INF-15-21
     return Container(
       height: 300,
       padding: const EdgeInsets.only(right: 16, top: 16, bottom: 8),
@@ -262,12 +351,24 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
                 showTitles: true,
                 getTitlesWidget: (value, meta) {
                   if (value.toInt() >= 0 && value.toInt() < docs.length) {
+<<<<<<< HEAD
+                    final date = (docs[value.toInt()]['date'] as Timestamp)
+                        .toDate();
+=======
                     final date = (docs[value.toInt()]['date'] as Timestamp).toDate();
+>>>>>>> BSC-INF-15-21
                     return Padding(
                       padding: const EdgeInsets.only(top: 8.0),
                       child: Text(
                         DateFormat('dd/MM').format(date),
+<<<<<<< HEAD
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey,
+                        ),
+=======
                         style: const TextStyle(fontSize: 10, color: Colors.grey),
+>>>>>>> BSC-INF-15-21
                       ),
                     );
                   }
@@ -286,14 +387,28 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
                 reservedSize: 40,
               ),
             ),
+<<<<<<< HEAD
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+=======
             topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
             rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+>>>>>>> BSC-INF-15-21
           ),
           borderData: FlBorderData(show: false),
           lineBarsData: [
             LineChartBarData(
               spots: docs.asMap().entries.map((e) {
+<<<<<<< HEAD
+                final price =
+                    double.tryParse(e.value['price'].toString()) ?? 0;
+=======
                 final price = double.tryParse(e.value.data()['price'].toString()) ?? 0;
+>>>>>>> BSC-INF-15-21
                 return FlSpot(e.key.toDouble(), price);
               }).toList(),
               isCurved: true,
@@ -312,9 +427,32 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
     );
   }
 
+<<<<<<< HEAD
+  Widget _buildStatsSection(ThemeData theme, List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    double highest = 0;
+    double lowest = double.infinity;
+    double firstPrice = 0;
+    double lastPrice = 0;
+
+    if (docs.isNotEmpty) {
+      firstPrice = double.tryParse(docs.first.data()['price'].toString()) ?? 0;
+      lastPrice = double.tryParse(docs.last.data()['price'].toString()) ?? 0;
+
+      for (var doc in docs) {
+        final p = double.tryParse(doc.data()['price'].toString()) ?? 0;
+        if (p > highest) highest = p;
+        if (p < lowest && p > 0) lowest = p;
+      }
+      if (lowest == double.infinity) lowest = 0;
+    } else {
+      lowest = 0;
+    }
+
+=======
   Widget _buildStatsSection(ThemeData theme, double highest, double lowest, String projection) {
     final currencyFormat = NumberFormat.currency(symbol: 'MK ', decimalDigits: 0);
     
+>>>>>>> BSC-INF-15-21
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -329,21 +467,34 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
           children: [
             _buildStatCard(
               'Highest',
+<<<<<<< HEAD
+              'MK ${highest.toStringAsFixed(0)}',
+=======
               currencyFormat.format(highest),
+>>>>>>> BSC-INF-15-21
               Icons.arrow_upward,
               Colors.green,
             ),
             const SizedBox(width: 16),
             _buildStatCard(
               'Lowest',
+<<<<<<< HEAD
+              'MK ${lowest.toStringAsFixed(0)}',
+=======
               currencyFormat.format(lowest),
+>>>>>>> BSC-INF-15-21
               Icons.arrow_downward,
               Colors.red,
             ),
           ],
         ),
+<<<<<<< HEAD
+        const SizedBox(height: 16),
+        _buildTrendAlert(theme, firstPrice, lastPrice),
+=======
         const SizedBox(height: 24),
         _buildTrendAlert(theme, projection),
+>>>>>>> BSC-INF-15-21
       ],
     );
   }
@@ -385,6 +536,45 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
     );
   }
 
+<<<<<<< HEAD
+  Widget _buildTrendAlert(ThemeData theme, double firstPrice, double lastPrice) {
+    String projectionText = 'Not enough data for projections.';
+    IconData icon = Icons.info_outline;
+    Color color = Colors.grey;
+
+    if (firstPrice > 0 && lastPrice > 0) {
+      final change = ((lastPrice - firstPrice) / firstPrice) * 100;
+      if (change > 0) {
+        projectionText = 'Prices for $_selectedCrop have risen by ${change.toStringAsFixed(1)}% over this timeframe. Upward trend detected.';
+        icon = Icons.trending_up;
+        color = Colors.green;
+      } else if (change < 0) {
+        projectionText = 'Prices for $_selectedCrop have dropped by ${change.abs().toStringAsFixed(1)}% over this timeframe. Downward trend detected.';
+        icon = Icons.trending_down;
+        color = Colors.red;
+      } else {
+        projectionText = 'Prices for $_selectedCrop have remained stable over this timeframe.';
+        icon = Icons.trending_flat;
+        color = Colors.blue;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withAlpha(25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withAlpha(50)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              projectionText,
+              style: const TextStyle(fontSize: 14),
+=======
   Widget _buildTrendAlert(ThemeData theme, String projection) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -411,6 +601,7 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
                   style: const TextStyle(fontSize: 14, height: 1.4),
                 ),
               ],
+>>>>>>> BSC-INF-15-21
             ),
           ),
         ],

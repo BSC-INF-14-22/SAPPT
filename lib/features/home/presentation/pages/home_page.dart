@@ -92,7 +92,7 @@ class HomePage extends StatelessWidget {
         ),
         child: NavigationBar(
           elevation: 0,
-          backgroundColor: Colors.white,
+          backgroundColor: theme.scaffoldBackgroundColor,
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.home_outlined),

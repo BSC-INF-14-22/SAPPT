@@ -12,12 +12,12 @@ class AppColors {
   static const Color goldLight = Color(0xFFFFF176);
   static const Color goldDark = Color(0xFFA68A0D);
 
-  // Neutral Palette
-  static const Color background = Color(0xFFFFFFFF);
-  static const Color surface = Color(0xFFF9FBF9);
+  // Neutral Palette (Updated to Green Theme)
+  static const Color background = Color(0xFFE8F5E9); // Light Green 50
+  static const Color surface = Color(0xFFF1F8E9);    // Even lighter Green for surfaces
   static const Color textPrimary = Color(0xFF1B1B1B);
-  static const Color textSecondary = Color(0xFF757575);
-  static const Color divider = Color(0xFFEEEEEE);
+  static const Color textSecondary = Color(0xFF424242);
+  static const Color divider = Color(0xFFC8E6C9);    // Green 100 for borders
   
   // Semantic Colors
   static const Color error = Color(0xFFD32F2F);
@@ -208,7 +208,7 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF121212),
+      scaffoldBackgroundColor: const Color(0xFF0A1A0D), // Deep Emerald Black
       primaryColor: AppColors.primaryLight,
       
       colorScheme: ColorScheme.fromSeed(
@@ -229,7 +229,7 @@ class AppTheme {
 
       appBarTheme: const AppBarTheme(
         centerTitle: true,
-        backgroundColor: Color(0xFF121212),
+        backgroundColor: Color(0xFF0A1A0D),
         elevation: 0,
         titleTextStyle: TextStyle(
           color: Colors.white,

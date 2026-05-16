@@ -65,7 +65,8 @@ service cloud.firestore {
       // Rule 4: Cooperative users can edit their own existing records
       allow update: if isCooperative() && resource.data.uploadedBy == request.auth.uid;
       
-      // Note: Only Admins can delete prices, handled by the Global Admin Override above.
+      // Rule 5: Cooperative users can delete their own existing records
+      allow delete: if isCooperative() && resource.data.uploadedBy == request.auth.uid;
     }
     
     // ==========================================
@@ -89,6 +90,10 @@ service cloud.firestore {
     match /products/{productId} {
       // Any signed-in user can read the list of available products
       allow read: if isSignedIn();
+      // Cooperative Officers can add new products (auto-added during price upload)
+      allow create: if isCooperative();
+      // Cooperative Officers can delete products when removing a price entry
+      allow delete: if isCooperative();
     }
 
     // ==========================================

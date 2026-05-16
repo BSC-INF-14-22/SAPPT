@@ -13,13 +13,13 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
-  
+
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  
+
   String _selectedRole = 'Farmer';
   String _selectedDistrict = 'Lilongwe';
   bool _isLoading = false;
@@ -28,7 +28,16 @@ class _RegisterPageState extends State<RegisterPage> {
 
   final List<String> _roles = ['Farmer', 'Cooperative Officer', 'Admin'];
   final List<String> _districts = [
-    'Lilongwe', 'Blantyre', 'Mzuzu', 'Zomba', 'Dedza', 'Kasungu', 'Mangochi', 'Salima', 'Thyolo', 'Mulanje'
+    'Lilongwe',
+    'Blantyre',
+    'Mzuzu',
+    'Zomba',
+    'Dedza',
+    'Kasungu',
+    'Mangochi',
+    'Salima',
+    'Thyolo',
+    'Mulanje',
   ];
 
   Future<void> _handleRegister() async {
@@ -85,11 +94,9 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Account'),
-      ),
+      appBar: AppBar(title: const Text('Create Account')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -111,10 +118,12 @@ class _RegisterPageState extends State<RegisterPage> {
                   Text(
                     'Sign up to access market data',
                     textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey),
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: Colors.grey,
+                    ),
                   ),
                   const SizedBox(height: 32),
-                  
+
                   // Full Name
                   TextFormField(
                     controller: _nameController,
@@ -123,8 +132,9 @@ class _RegisterPageState extends State<RegisterPage> {
                       prefixIcon: Icon(Icons.person_outline),
                       border: OutlineInputBorder(),
                     ),
-                    validator: (value) => 
-                        (value == null || value.isEmpty) ? 'Enter your full name' : null,
+                    validator: (value) => (value == null || value.isEmpty)
+                        ? 'Enter your full name'
+                        : null,
                   ),
                   const SizedBox(height: 16),
 
@@ -137,8 +147,10 @@ class _RegisterPageState extends State<RegisterPage> {
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.emailAddress,
-                    validator: (value) => 
-                        (value == null || !value.contains('@')) ? 'Enter a valid email' : null,
+                    validator: (value) =>
+                        (value == null || !value.contains('@'))
+                        ? 'Enter a valid email'
+                        : null,
                   ),
                   const SizedBox(height: 16),
 
@@ -151,24 +163,22 @@ class _RegisterPageState extends State<RegisterPage> {
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.phone,
-                    validator: (value) => 
-                        (value == null || value.isEmpty) ? 'Enter your phone number' : null,
+                    validator: (value) => (value == null || value.isEmpty)
+                        ? 'Enter your phone number'
+                        : null,
                   ),
                   const SizedBox(height: 16),
 
                   // Role Dropdown
                   DropdownButtonFormField<String>(
-                    value: _selectedRole,
+                    initialValue: _selectedRole,
                     decoration: const InputDecoration(
                       labelText: 'Select Role',
                       prefixIcon: Icon(Icons.badge_outlined),
                       border: OutlineInputBorder(),
                     ),
                     items: _roles.map((role) {
-                      return DropdownMenuItem(
-                        value: role,
-                        child: Text(role),
-                      );
+                      return DropdownMenuItem(value: role, child: Text(role));
                     }).toList(),
                     onChanged: (value) {
                       setState(() {
@@ -180,7 +190,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
                   // District Dropdown
                   DropdownButtonFormField<String>(
-                    value: _selectedDistrict,
+                    initialValue: _selectedDistrict,
                     decoration: const InputDecoration(
                       labelText: 'Select District',
                       prefixIcon: Icon(Icons.location_on_outlined),
@@ -207,14 +217,21 @@ class _RegisterPageState extends State<RegisterPage> {
                       labelText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
                       ),
                       border: const OutlineInputBorder(),
                     ),
                     obscureText: _obscurePassword,
-                    validator: (value) => 
-                        (value == null || value.length < 6) ? 'Password must be at least 6 characters' : null,
+                    validator: (value) => (value == null || value.length < 6)
+                        ? 'Password must be at least 6 characters'
+                        : null,
                   ),
                   const SizedBox(height: 16),
 
@@ -225,15 +242,26 @@ class _RegisterPageState extends State<RegisterPage> {
                       labelText: 'Confirm Password',
                       prefixIcon: const Icon(Icons.lock_reset),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscureConfirmPassword ? Icons.visibility : Icons.visibility_off),
-                        onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                        icon: Icon(
+                          _obscureConfirmPassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                        onPressed: () => setState(
+                          () => _obscureConfirmPassword =
+                              !_obscureConfirmPassword,
+                        ),
                       ),
                       border: const OutlineInputBorder(),
                     ),
                     obscureText: _obscureConfirmPassword,
                     validator: (value) {
-                      if (value == null || value.isEmpty) return 'Confirm your password';
-                      if (value != _passwordController.text) return 'Passwords do not match';
+                      if (value == null || value.isEmpty) {
+                        return 'Confirm your password';
+                      }
+                      if (value != _passwordController.text) {
+                        return 'Passwords do not match';
+                      }
                       return null;
                     },
                   ),
@@ -247,12 +275,15 @@ class _RegisterPageState extends State<RegisterPage> {
                       backgroundColor: const Color(0xFF2E7D32),
                       foregroundColor: Colors.white,
                     ),
-                    child: _isLoading 
-                        ? const CircularProgressIndicator(color: Colors.white) 
-                        : const Text('REGISTER', style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text(
+                            'REGISTER',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [

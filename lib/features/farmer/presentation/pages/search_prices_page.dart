@@ -167,70 +167,83 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
 
   Widget _buildResultsList() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirestoreService().getFilteredCollectionStream('prices', 'status', 'approved'),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+      stream: FirebaseFirestore.instance.collection('products').snapshots(),
+      builder: (context, productsSnapshot) {
+        if (productsSnapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
+        final registeredProducts = productsSnapshot.data?.docs
+            .map((d) => d.data()['name'].toString().toLowerCase())
+            .toSet() ?? {};
 
-        var docs = snapshot.data?.docs ?? [];
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirestoreService().getFilteredCollectionStream('prices', 'status', 'approved'),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-        // Apply Client-Side Filters for better UX (instant feel)
-        var filteredList = docs.where((doc) {
-          final data = doc.data();
-          final cropName = (data['cropName'] ?? '').toString().toLowerCase();
-          final district = data['district'] ?? '';
-          
-          bool matchesSearch = cropName.contains(_searchQuery);
-          bool matchesDistrict = _selectedDistrict == null || _selectedDistrict == 'All' || district == _selectedDistrict;
-          
-          return matchesSearch && matchesDistrict;
-        }).toList();
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
 
-        // Sort
-        filteredList.sort((a, b) {
-          if (_sortByLatest) {
-            final dateA = a.data()['updatedAt'];
-            final dateB = b.data()['updatedAt'];
-            // Handle different timestamp types (Timestamp vs String)
-            DateTime? dtA = _parseDate(dateA);
-            DateTime? dtB = _parseDate(dateB);
-            if (dtA == null || dtB == null) return 0;
-            return dtB.compareTo(dtA); // Descending
-          } else {
-            final priceA = double.tryParse(a.data()['price']?.toString() ?? '0') ?? 0;
-            final priceB = double.tryParse(b.data()['price']?.toString() ?? '0') ?? 0;
-            return priceA.compareTo(priceB); // Ascending
-          }
-        });
+            var docs = snapshot.data?.docs ?? [];
 
-        if (filteredList.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.search_off_rounded, size: 64, color: Colors.grey[300]),
-                const SizedBox(height: 16),
-                const Text('No crops found matching your criteria.'),
-              ],
-            ),
-          );
-        }
+            // Apply Client-Side Filters
+            var filteredList = docs.where((doc) {
+              final data = doc.data();
+              final cropName = (data['cropName'] ?? '').toString();
+              final district = data['district'] ?? '';
+              
+              bool isRegistered = registeredProducts.contains(cropName.toLowerCase());
+              bool matchesSearch = cropName.toLowerCase().contains(_searchQuery);
+              bool matchesDistrict = _selectedDistrict == null || _selectedDistrict == 'All' || district == _selectedDistrict;
+              
+              return isRegistered && matchesSearch && matchesDistrict;
+            }).toList();
 
-        return ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: filteredList.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final data = filteredList[index].data();
-            return _buildPriceCard(context, data);
+            // Sort
+            filteredList.sort((a, b) {
+              if (_sortByLatest) {
+                final dateA = a.data()['updatedAt'];
+                final dateB = b.data()['updatedAt'];
+                DateTime? dtA = _parseDate(dateA);
+                DateTime? dtB = _parseDate(dateB);
+                if (dtA == null || dtB == null) return 0;
+                return dtB.compareTo(dtA);
+              } else {
+                final priceA = double.tryParse(a.data()['price']?.toString() ?? '0') ?? 0;
+                final priceB = double.tryParse(b.data()['price']?.toString() ?? '0') ?? 0;
+                return priceA.compareTo(priceB);
+              }
+            });
+
+            if (filteredList.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.search_off_rounded, size: 64, color: Colors.grey[300]),
+                    const SizedBox(height: 16),
+                    const Text('No crops found matching your criteria.'),
+                  ],
+                ),
+              );
+            }
+
+            return ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: filteredList.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final data = filteredList[index].data();
+                return _buildPriceCard(context, data);
+              },
+            );
           },
         );
-      },
+      }
     );
   }
 
@@ -266,6 +279,27 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
             Text('$market, $district', style: TextStyle(color: Colors.grey[600])),
             const SizedBox(height: 4),
             Text('Updated: $formattedDate', style: const TextStyle(fontSize: 12)),
+            if (data['uploadedBy'] != null)
+              FutureBuilder<Map<String, dynamic>?>(
+                future: FirestoreService().getUserByUid(data['uploadedBy']),
+                builder: (context, userSnapshot) {
+                  if (userSnapshot.connectionState == ConnectionState.waiting) {
+                    return const Text('Loading cooperative...', style: TextStyle(fontSize: 11, color: Colors.grey));
+                  }
+                  final coopName = userSnapshot.data?['fullName'] ?? 'Unknown Cooperative';
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: Text(
+                      'By: $coopName',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: theme.primaryColor,
+                      ),
+                    ),
+                  );
+                },
+              ),
           ],
         ),
         trailing: Column(

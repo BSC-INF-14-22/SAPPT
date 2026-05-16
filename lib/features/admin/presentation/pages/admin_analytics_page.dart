@@ -305,9 +305,11 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
           }
 
           final docs = snapshot.data?.docs ?? [];
-          if (docs.isEmpty) return const Center(child: Text('No crop data available'));
+          if (docs.isEmpty) {
+            return const Center(child: Text('No price data available for analytics.'));
+          }
 
-          // Count occurrences of each crop
+          // Aggregate crop submissions
           Map<String, int> cropCounts = {};
           for (var doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
@@ -315,19 +317,17 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
             cropCounts[crop] = (cropCounts[crop] ?? 0) + 1;
           }
 
-          // Sort by count descending and take top 5
-          var sortedCrops = cropCounts.entries.toList()
+          // Sort and take top 5
+          final sortedCrops = cropCounts.entries.toList()
             ..sort((a, b) => b.value.compareTo(a.value));
           
-          if (sortedCrops.length > 5) {
-            sortedCrops = sortedCrops.sublist(0, 5);
-          }
-          
-          if (sortedCrops.isEmpty) {
-            return const Center(child: Text('No crop data available'));
+          final topCrops = sortedCrops.take(5).toList();
+
+          if (topCrops.isEmpty) {
+            return const Center(child: Text('Insufficient data for crop trends.'));
           }
 
-          final maxY = sortedCrops.first.value.toDouble() + 5;
+          final maxY = topCrops.map((e) => e.value).reduce((a, b) => a > b ? a : b).toDouble() + 2;
 
           final titlesData = FlTitlesData(
             show: true,
@@ -336,12 +336,12 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
                 showTitles: true,
                 getTitlesWidget: (double value, TitleMeta meta) {
                   final index = value.toInt();
-                  if (index < 0 || index >= sortedCrops.length) return const SizedBox.shrink();
+                  if (index < 0 || index >= topCrops.length) return const SizedBox.shrink();
                   return Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Text(
-                      sortedCrops[index].key, 
-                      style: const TextStyle(fontSize: 10)
+                      topCrops[index].key, 
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)
                     ),
                   );
                 },
@@ -351,7 +351,10 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 30,
-                getTitlesWidget: (value, meta) => Text(value.toInt().toString(), style: const TextStyle(fontSize: 10)),
+                getTitlesWidget: (value, meta) => Text(
+                  value.toInt().toString(), 
+                  style: const TextStyle(fontSize: 10)
+                ),
               ),
             ),
             topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -362,7 +365,7 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
             children: [
               const Align(
                 alignment: Alignment.centerRight,
-                child: Text('All Time Submissions', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                child: Text('Most Active Crops', style: TextStyle(color: Colors.grey, fontSize: 12)),
               ),
               const SizedBox(height: 16),
               Expanded(
@@ -370,7 +373,7 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
                     ? LineChart(
                         LineChartData(
                           minX: 0,
-                          maxX: (sortedCrops.length - 1).toDouble(),
+                          maxX: (topCrops.length - 1).toDouble(),
                           minY: 0,
                           maxY: maxY,
                           gridData: const FlGridData(show: true, drawVerticalLine: false),
@@ -378,17 +381,17 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
                           borderData: FlBorderData(show: false),
                           lineBarsData: [
                             LineChartBarData(
-                              spots: List.generate(sortedCrops.length, (index) {
-                                return FlSpot(index.toDouble(), sortedCrops[index].value.toDouble());
+                              spots: List.generate(topCrops.length, (index) {
+                                return FlSpot(index.toDouble(), topCrops[index].value.toDouble());
                               }),
                               isCurved: true,
-                              color: Colors.amber,
+                              color: Colors.orange,
                               barWidth: 4,
                               isStrokeCapRound: true,
                               dotData: const FlDotData(show: true),
                               belowBarData: BarAreaData(
                                 show: true,
-                                color: Colors.amber.withAlpha(50),
+                                color: Colors.orange.withAlpha(50),
                               ),
                             ),
                           ],
@@ -402,13 +405,13 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
                           titlesData: titlesData,
                           gridData: const FlGridData(show: false),
                           borderData: FlBorderData(show: false),
-                          barGroups: List.generate(sortedCrops.length, (index) {
+                          barGroups: List.generate(topCrops.length, (index) {
                             return BarChartGroupData(
                               x: index,
                               barRods: [
                                 BarChartRodData(
-                                  toY: sortedCrops[index].value.toDouble(),
-                                  color: Colors.amber,
+                                  toY: topCrops[index].value.toDouble(),
+                                  color: Colors.orange,
                                   width: 20,
                                   borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                                 ),
@@ -424,6 +427,7 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
       ),
     );
   }
+
 
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
