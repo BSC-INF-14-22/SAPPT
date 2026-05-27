@@ -23,6 +23,7 @@ const router  = express.Router();
 // Import each feature's router
 const priceRoutes  = require('./priceRoutes');
 const marketRoutes = require('./marketRoutes');
+const syncRoutes   = require('./syncRoutes');
 
 // ─────────────────────────────────────────────────────────────
 //  Health Check Route
@@ -44,9 +45,11 @@ router.get('/health', (req, res) => {
 //
 //  All price routes:  /api/prices  → priceRoutes.js
 //  All market routes: /api/markets → marketRoutes.js
+//  All sync routes:   /api/sync    → syncRoutes.js
 // ─────────────────────────────────────────────────────────────
 router.use('/prices',  priceRoutes);
 router.use('/markets', marketRoutes);
+router.use('/sync',    syncRoutes);
 
 // ─────────────────────────────────────────────────────────────
 //  404 Handler for unknown /api/... routes

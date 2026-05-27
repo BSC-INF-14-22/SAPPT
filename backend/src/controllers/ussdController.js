@@ -29,22 +29,28 @@
 //  "CON Some message"  → Continue: show the message and KEEP session open
 //  "END Some message"  → End: show the message and CLOSE the session
 //
-//  MENU FLOW FOR SAPPT:
+//  MENU FLOW FOR SAPPT (Linear Flow):
 //  ─────────────────────────────────────────────────────────
 //  Dial *XXX#
 //  └── Welcome Menu (text = "")
-//      ├── 1. View Prices by Product
-//      │   └── Pick a product (text = "1")
-//      │       ├── 1. Maize    → Show Maize prices   (text = "1*1")
-//      │       ├── 2. Soybean  → Show Soybean prices (text = "1*2")
-//      │       ├── 3. Groundnuts                     (text = "1*3")
-//      │       └── 0. Back
-//      ├── 2. Browse by Market
-//      │   └── Pick a market (text = "2")
-//      │       ├── 1. Lusaka Market   → Show prices  (text = "2*1")
-//      │       ├── 2. Kitwe Market    → Show prices  (text = "2*2")
-//      │       └── 0. Back
-//      └── 3. Exit
+//      ├── 1. View Prices
+//      ├── 2. Select Commodity
+//      ├── 3. Select Market
+//      └── 4. Exit
+//
+//  Flow 1: View Prices (text = "1")
+//      └── Shows latest prices from all markets
+//
+//  Flow 2: Select Commodity (text = "2")
+//      └── Pick commodity (text = "2*X")
+//          └── Shows prices for selected commodity
+//
+//  Flow 3: Select Market (text = "3")
+//      └── Pick market (text = "3*X")
+//          └── Shows prices at selected market
+//
+//  Flow 4: Exit (text = "4")
+//      └── Ends session
 // ============================================================
 
 const { db } = require('../config/firebase');
@@ -80,6 +86,27 @@ const fetchLatestPriceForProduct = async (productName) => {
   } catch (err) {
     console.error('Firestore fetchLatestPriceForProduct error:', err.message);
     return null;
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+//  HELPER: Fetch all latest prices from Firestore
+//
+//  This queries the 'prices' collection ordered newest first,
+//  and returns the top 5 prices across all markets.
+// ─────────────────────────────────────────────────────────────
+const fetchLatestPrices = async () => {
+  try {
+    const snapshot = await db
+      .collection('prices')
+      .orderBy('submittedAt', 'desc')
+      .limit(5)       // Show at most 5 prices (USSD screens are small!)
+      .get();
+
+    return snapshot.docs.map((doc) => doc.data());
+  } catch (err) {
+    console.error('Firestore fetchLatestPrices error:', err.message);
+    return [];
   }
 };
 
@@ -147,7 +174,7 @@ const handleUSSD = async (req, res) => {
   const userInputs = text.split('*');
 
   // The FIRST input is the main menu choice
-  const level1 = userInputs[0]; // e.g. '1', '2', '3' or ''
+  const level1 = userInputs[0]; // e.g. '1', '2', '3', '4' or ''
 
   // The SECOND input (if any) is the submenu choice
   const level2 = userInputs[1]; // e.g. '1', '2', '0'
@@ -157,14 +184,39 @@ const handleUSSD = async (req, res) => {
     return res.send(
       'CON Welcome to SAPPT Market Prices 🌾\n' +
       'Select an option:\n' +
-      '1. View Commodity Prices\n' +
-      '2. Browse by Market\n' +
-      '3. Exit'
+      '1. View Prices\n' +
+      '2. Select Commodity\n' +
+      '3. Select Market\n' +
+      '4. Exit'
     );
   }
 
-  // ── LEVEL 1, Option 1: View Prices by Product ──────────
-  if (level1 === '1' && !level2) {
+  // ── LEVEL 1, Option 1: View Prices ─────────────────────
+  if (level1 === '1') {
+    // Fetch latest prices from Firestore
+    const prices = await fetchLatestPrices();
+
+    if (prices.length === 0) {
+      return res.send(
+        'END No price data available.\n' +
+        'Please check back later.'
+      );
+    }
+
+    // Build a compact price list (USSD max ~182 characters per screen)
+    const priceLines = prices
+      .map((p) => `${p.productName}: ZMW${p.price}/${p.unit}`)
+      .join('\n');
+
+    return res.send(
+      'END Latest Prices:\n' +
+      priceLines + '\n' +
+      'Source: SAPPT'
+    );
+  }
+
+  // ── LEVEL 1, Option 2: Select Commodity ────────────────
+  if (level1 === '2' && !level2) {
     // Build the product menu dynamically from the PRODUCTS array
     // Result: "1. Maize\n2. Soybean\n3. Groundnuts\n..."
     const productMenu = PRODUCTS
@@ -178,16 +230,17 @@ const handleUSSD = async (req, res) => {
     );
   }
 
-  // ── LEVEL 2, Option 1→X: Show price for chosen product ─
-  if (level1 === '1' && level2) {
+  // ── LEVEL 2, Option 2→X: Show price for chosen commodity ─
+  if (level1 === '2' && level2) {
     if (level2 === '0') {
       // User pressed 0 = go back to main menu
       return res.send(
         'CON Welcome to SAPPT Market Prices 🌾\n' +
         'Select an option:\n' +
-        '1. View Commodity Prices\n' +
-        '2. Browse by Market\n' +
-        '3. Exit'
+        '1. View Prices\n' +
+        '2. Select Commodity\n' +
+        '3. Select Market\n' +
+        '4. Exit'
       );
     }
 
@@ -223,8 +276,8 @@ const handleUSSD = async (req, res) => {
     );
   }
 
-  // ── LEVEL 1, Option 2: Browse by Market ────────────────
-  if (level1 === '2' && !level2) {
+  // ── LEVEL 1, Option 3: Select Market ────────────────────
+  if (level1 === '3' && !level2) {
     // Fetch active markets from Firestore
     const markets = await fetchMarkets();
 
@@ -248,14 +301,16 @@ const handleUSSD = async (req, res) => {
     );
   }
 
-  // ── LEVEL 2, Option 2→X: Show prices for chosen market ─
-  if (level1 === '2' && level2) {
+  // ── LEVEL 2, Option 3→X: Show prices for chosen market ─
+  if (level1 === '3' && level2) {
     if (level2 === '0') {
       return res.send(
         'CON Welcome to SAPPT Market Prices 🌾\n' +
-        '1. View Commodity Prices\n' +
-        '2. Browse by Market\n' +
-        '3. Exit'
+        'Select an option:\n' +
+        '1. View Prices\n' +
+        '2. Select Commodity\n' +
+        '3. Select Market\n' +
+        '4. Exit'
       );
     }
 
@@ -294,8 +349,8 @@ const handleUSSD = async (req, res) => {
     );
   }
 
-  // ── LEVEL 1, Option 3: Exit ─────────────────────────────
-  if (level1 === '3') {
+  // ── LEVEL 1, Option 4: Exit ─────────────────────────────
+  if (level1 === '4') {
     return res.send(
       'END Thank you for using SAPPT! 🌾\n' +
       'Helping farmers get fair prices.'
