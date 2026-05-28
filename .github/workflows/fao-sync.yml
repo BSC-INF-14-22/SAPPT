@@ -1,0 +1,38 @@
+# .github/workflows/fao-sync.yml
+# GitHub Actions workflow to trigger the FAO price sync endpoint daily.
+# This runs on the free tier and costs nothing.
+
+name: Daily FAO Price Sync
+
+on:
+  schedule:
+    # Runs every day at 02:00 UTC (adjust if you need a different time zone)
+    - cron: "0 2 * * *"
+
+jobs:
+  trigger-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (optional)
+        uses: actions/checkout@v4
+
+      # If you keep the optional API‑key middleware, store the key as a repo secret
+      # named FAO_API_KEY and it will be injected into the request below.
+      - name: Set API key environment variable (if secret exists)
+        if: ${{ secrets.FAO_API_KEY }}
+        run: echo "FAO_API_KEY=${{ secrets.FAO_API_KEY }}" >> $GITHUB_ENV
+
+      - name: Trigger FAO sync endpoint
+        env:
+          FAO_API_KEY: ${{ secrets.FAO_API_KEY }}
+        run: |
+          # ------------------------------------------------------------
+          # Replace the URL with the public address of your Express server.
+          # Example: https://my-project.web.app/api/sync/fao-prices
+          # ------------------------------------------------------------
+          URL="https://YOUR_PUBLIC_DOMAIN/api/sync/fao-prices"
+          if [ -n "$FAO_API_KEY" ]; then
+            curl -X POST -H "X-API-KEY: $FAO_API_KEY" "$URL"
+          else
+            curl -X POST "$URL"
+          fi

@@ -72,32 +72,24 @@ After deployment, add your Firebase credentials:
 4. Add these variables:
 
 ```
-PORT=3000
 FIREBASE_PROJECT_ID=your-firebase-project-id
-FIREBASE_SERVICE_ACCOUNT_PATH=./smart-agri-price-tracker-firebase-adminsdk-fbsvc-ac2746a0eb.json
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"..."}
 ```
 
-5. For the Firebase service account JSON file, you have two options:
+5. Recommended Railway setup:
 
-   **Option A: Upload the file**
-   - In Railway dashboard, go to your project
-   - Click the "Files" tab (if available)
-   - Upload your `smart-agri-price-tracker-firebase-adminsdk-fbsvc-ac2746a0eb.json` file
+   - Open your Firebase service account JSON file.
+   - Copy the entire JSON object into one Railway variable named `FIREBASE_SERVICE_ACCOUNT_JSON`.
+   - Keep the `\n` sequences inside `private_key` exactly as they appear in the JSON.
+   - Do not set `FIREBASE_SERVICE_ACCOUNT_PATH` on Railway unless you also ship the JSON file inside the deployment.
+   - Do not manually set `PORT`; Railway provides it automatically.
 
-   **Option B: Use environment variables**
-   - Open your JSON file and copy the contents
-   - In Railway Variables, add each field as a separate variable:
-     ```
-     FIREBASE_TYPE=service_account
-     FIREBASE_PROJECT_ID=your-project-id
-     FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-     FIREBASE_CLIENT_EMAIL=your-service-account-email
-     FIREBASE_CLIENT_ID=your-client-id
-     FIREBASE_AUTH_URI=https://oauth2.googleapis.com/token
-     FIREBASE_TOKEN_URI=https://oauth2.googleapis.com/token
-     FIREBASE_AUTH_PROVIDER_X509_CERT_URL=https://www.googleapis.com/oauth2/v1/certs
-     FIREBASE_CLIENT_X509_CERT_URL=https://www.googleapis.com/robot/v1/metadata/x509/your-service-account-email
-     ```
+   Alternative split-variable setup:
+   ```
+   FIREBASE_PROJECT_ID=your-project-id
+   FIREBASE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n
+   FIREBASE_CLIENT_EMAIL=your-service-account-email
+   ```
 
 ## Step 4: Get Your Public URL
 

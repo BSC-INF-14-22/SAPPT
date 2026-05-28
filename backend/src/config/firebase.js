@@ -1,41 +1,106 @@
-// ============================================================
-//  src/config/firebase.js
-//
-//  WHAT THIS FILE DOES:
-//  - Loads your secret Firebase credentials from the .env file
-//  - Initializes the Firebase Admin SDK (server-side Firebase)
-//  - Exports the Firestore database so other files can use it
-//
-//  WHY Firebase Admin SDK?
-//  - The normal Firebase SDK is for mobile/web (client-side)
-//  - The Admin SDK is for servers - it has full database access
-//    without needing a logged-in user
-// ============================================================
-
-// Load environment variables from .env file into process.env
 const admin = require('firebase-admin');
-const path  = require('path');
+const fs = require('fs');
+const path = require('path');
 
-// Read the path to your service account key from the .env file
-const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+const CONFIG_VERSION = 'firebase-config-env-json-v2';
 
-// Build an absolute path so Node.js can find the file correctly
-const absolutePath = path.resolve(serviceAccountPath);
+const present = (value) => (
+  typeof value === 'string'
+  && value.trim() !== ''
+  && value.trim().toLowerCase() !== 'undefined'
+  && value.trim().toLowerCase() !== 'null'
+);
 
-// Load the JSON key file (this has your Firebase credentials)
-const serviceAccount = require(absolutePath);
+const normalizePrivateKey = (key) => key.replace(/\\n/g, '\n');
 
-// Initialize Firebase Admin — only do this ONCE across the app
-// We check if it has already been initialized to avoid errors
+const normalizeServiceAccount = (serviceAccount) => {
+  if (!serviceAccount || typeof serviceAccount !== 'object' || Array.isArray(serviceAccount)) {
+    throw new Error('Firebase service account must be a JSON object.');
+  }
+
+  return {
+    ...serviceAccount,
+    private_key: present(serviceAccount.private_key)
+      ? normalizePrivateKey(serviceAccount.private_key)
+      : serviceAccount.private_key,
+  };
+};
+
+const parseServiceAccountJson = (value, envName) => {
+  try {
+    return normalizeServiceAccount(JSON.parse(value));
+  } catch (jsonError) {
+    try {
+      return normalizeServiceAccount(JSON.parse(Buffer.from(value, 'base64').toString('utf8')));
+    } catch (base64Error) {
+      throw new Error(`${envName} must be valid service-account JSON or base64-encoded JSON.`);
+    }
+  }
+};
+
+const serviceAccountFromFile = (filePath) => {
+  const absolutePath = path.resolve(filePath);
+
+  try {
+    const contents = fs.readFileSync(absolutePath, 'utf8');
+    return parseServiceAccountJson(contents, 'FIREBASE_SERVICE_ACCOUNT_PATH');
+  } catch (err) {
+    throw new Error(`Could not load Firebase service account at ${absolutePath}: ${err.message}`);
+  }
+};
+
+const serviceAccountFromEnvVars = () => {
+  if (!present(process.env.FIREBASE_PRIVATE_KEY) || !present(process.env.FIREBASE_CLIENT_EMAIL)) {
+    return null;
+  }
+
+  return normalizeServiceAccount({
+    type: 'service_account',
+    project_id: process.env.FIREBASE_PROJECT_ID,
+    private_key: process.env.FIREBASE_PRIVATE_KEY,
+    client_email: process.env.FIREBASE_CLIENT_EMAIL,
+  });
+};
+
+const getServiceAccount = () => {
+  if (present(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)) {
+    return parseServiceAccountJson(
+      process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
+      'FIREBASE_SERVICE_ACCOUNT_JSON'
+    );
+  }
+
+  if (present(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64)) {
+    return parseServiceAccountJson(
+      process.env.FIREBASE_SERVICE_ACCOUNT_BASE64,
+      'FIREBASE_SERVICE_ACCOUNT_BASE64'
+    );
+  }
+
+  if (present(process.env.FIREBASE_SERVICE_ACCOUNT_PATH)) {
+    return serviceAccountFromFile(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+  }
+
+  return serviceAccountFromEnvVars();
+};
+
+const serviceAccount = getServiceAccount();
+
+if (!serviceAccount) {
+  throw new Error(
+    'Firebase credentials not found. On Railway, set FIREBASE_SERVICE_ACCOUNT_JSON to the full service account JSON, or set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.'
+  );
+}
+
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    projectId: process.env.FIREBASE_PROJECT_ID,
+    projectId: process.env.FIREBASE_PROJECT_ID || serviceAccount.project_id,
   });
+
+  console.log(`Firebase Admin initialized (${CONFIG_VERSION})`);
 }
 
-// Get a reference to the Firestore database
 const db = admin.firestore();
 
-// Export db so other files (controllers) can import and use it
 module.exports = { admin, db };

@@ -2,4 +2,5 @@
 .env
 serviceAccountKey.json
 smart-agri-price-tracker-firebase-adminsdk-fbsvc-ac2746a0eb.json
+smart-agri-price-tracker-firebase-adminsdk-*.json
 node_modules/
