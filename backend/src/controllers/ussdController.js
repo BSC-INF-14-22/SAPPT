@@ -3,19 +3,21 @@ const { db } = require('../config/firebase');
 const CURRENCY = 'MWK';
 const DEFAULT_UNIT = 'kg';
 const RANGE_PERCENT = 0.30;
-
-const PRODUCTS = [
-  { label: 'Maize', aliases: ['maize', 'corn'] },
-  { label: 'Rice', aliases: ['rice', 'rice-polished', 'rice-unpolished'] },
-  { label: 'Beans', aliases: ['beans', 'bean', 'cowpeas', 'cow peas'] },
-  { label: 'Groundnuts', aliases: ['groundnuts', 'groundnut', 'peanuts', 'peanut'] },
-];
-
-const MARKETS = ['Zomba', 'Lilongwe', 'Blantyre', 'Mzuzu'];
+const MAX_MENU_ITEMS = 30;
 
 const toText = (value, fallback = '') => (
-  value === undefined || value === null ? fallback : String(value).trim()
+  value === undefined || value === null || typeof value === 'object'
+    ? fallback
+    : String(value).trim()
 );
+
+const firstText = (...values) => {
+  for (const value of values) {
+    const text = toText(value);
+    if (text) return text;
+  }
+  return '';
+};
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -44,17 +46,130 @@ const mainMenu = () => (
   '2. Exit'
 );
 
-const productMenu = () => (
-  'CON Select Product Category\n' +
-  PRODUCTS.map((product, index) => `${index + 1}. ${product.label}`).join('\n') +
-  '\n5. Back'
+const uniqueByKey = (items, keySelector) => {
+  const map = new Map();
+  for (const item of items) {
+    const key = keySelector(item);
+    if (key && !map.has(key)) map.set(key, item);
+  }
+  return [...map.values()];
+};
+
+const productAliases = (name) => {
+  const normalized = normalize(name);
+  const aliases = new Set([normalized]);
+
+  if (normalized.includes('-')) aliases.add(normalized.split('-')[0]);
+  if (normalized.includes(' ')) aliases.add(normalized.split(' ')[0]);
+  if (normalized === 'maize') aliases.add('corn');
+  if (normalized === 'corn') aliases.add('maize');
+  if (normalized.includes('rice')) aliases.add('rice');
+  if (normalized.includes('bean') || normalized.includes('cowpea')) {
+    aliases.add('beans');
+    aliases.add('bean');
+    aliases.add('cowpeas');
+    aliases.add('cow peas');
+  }
+  if (normalized.includes('groundnut') || normalized.includes('peanut')) {
+    aliases.add('groundnuts');
+    aliases.add('groundnut');
+    aliases.add('peanuts');
+    aliases.add('peanut');
+  }
+
+  return [...aliases];
+};
+
+const fetchApprovedPrices = async (limit = 500) => {
+  const snapshot = await db
+    .collection('prices')
+    .where('status', '==', 'approved')
+    .limit(limit)
+    .get();
+
+  return snapshot.docs.map((doc) => doc.data()).filter(isVisiblePrice);
+};
+
+const fetchProducts = async () => {
+  const readProductCollection = async (collectionName) => {
+    try {
+      const snapshot = await db.collection(collectionName).limit(50).get();
+      return snapshot.docs
+        .map((doc) => doc.data())
+        .map((item) => firstText(item.name, item.cropName, item.productName))
+        .filter(Boolean);
+    } catch (error) {
+      console.error(`USSD fetch ${collectionName} failed:`, error.message);
+      return [];
+    }
+  };
+
+  const fromProducts = await readProductCollection('products');
+  const fromCommodities = fromProducts.length > 0
+    ? []
+    : await readProductCollection('commodities');
+
+  const catalogNames = [...fromProducts, ...fromCommodities];
+  const fallbackPrices = catalogNames.length > 0 ? [] : await fetchApprovedPrices();
+  const fallbackNames = fallbackPrices
+    .map((price) => toText(price.cropName || price.productName || price.name))
+    .filter(Boolean);
+
+  return uniqueByKey([...catalogNames, ...fallbackNames]
+    .map((name) => ({
+      label: name,
+      aliases: productAliases(name),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label)), (product) => normalize(product.label))
+    .slice(0, MAX_MENU_ITEMS);
+};
+
+const fetchLocations = async () => {
+  let locations = [];
+
+  try {
+    const snapshot = await db.collection('markets').limit(80).get();
+    locations = snapshot.docs
+      .map((doc) => doc.data())
+      .filter((market) => market.isActive !== false)
+      .map((market) => firstText(
+        market.district,
+        market.region,
+        market.location,
+        market.name,
+        market.marketName,
+      ))
+      .filter(Boolean);
+  } catch (error) {
+    console.error('USSD fetch markets failed:', error.message);
+  }
+
+  if (locations.length === 0) {
+    const prices = await fetchApprovedPrices();
+    locations = prices
+      .map((price) => firstText(price.district, price.region, price.location))
+      .filter(Boolean);
+  }
+
+  return uniqueByKey(
+    locations.sort((a, b) => a.localeCompare(b)),
+    (location) => normalize(location),
+  ).slice(0, MAX_MENU_ITEMS);
+};
+
+const numberedMenu = (title, items, formatter = (item) => item) => (
+  `CON ${title}\n` +
+  items.map((item, index) => `${index + 1}. ${formatter(item)}`).join('\n') +
+  `\n${items.length + 1}. Back`
 );
 
-const marketMenu = () => (
-  'CON Select Market\n' +
-  MARKETS.map((market, index) => `${index + 1}. ${market}`).join('\n') +
-  '\n5. Back'
+const productMenu = (products) => numberedMenu(
+  'Select Product Category',
+  products,
+  (product) => product.label,
 );
+
+const locationMenu = (locations) => numberedMenu('Select Market', locations);
 
 const exitMessage = () => 'END Thank you for using SAPPT.';
 
@@ -79,18 +194,10 @@ const districtMatches = (priceDistrict, market) => (
 );
 
 const fetchAverageSellingPrice = async (product, market) => {
-  const snapshot = await db
-    .collection('prices')
-    .where('status', '==', 'approved')
-    .limit(500)
-    .get();
-
   const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
-  const matchingPrices = snapshot.docs
-    .map((doc) => doc.data())
-    .filter(isVisiblePrice)
-    .filter((data) => productMatches(data.cropName || data.productName || data.name, product))
-    .filter((data) => districtMatches(data.district || data.region || data.location, market))
+  const matchingPrices = (await fetchApprovedPrices())
+    .filter((data) => productMatches(firstText(data.cropName, data.productName, data.name), product))
+    .filter((data) => districtMatches(firstText(data.district, data.region, data.location), market))
     .map((data) => ({
       price: toNumber(data.price),
       unit: toText(data.unit || data.measurementUnit || data.measurement, DEFAULT_UNIT),
@@ -161,41 +268,59 @@ const handleUSSD = async (req, res) => {
   }
 
   if (!productChoice) {
-    return res.type('text/plain').send(productMenu());
+    const products = await fetchProducts();
+    if (products.length === 0) {
+      return res.type('text/plain').send('END No products available yet.');
+    }
+    return res.type('text/plain').send(productMenu(products));
   }
 
-  if (productChoice === '5') {
+  const products = await fetchProducts();
+  if (products.length === 0) {
+    return res.type('text/plain').send('END No products available yet.');
+  }
+
+  if (productChoice === String(products.length + 1)) {
     return res.type('text/plain').send(mainMenu());
   }
 
-  const productIndex = parseSelection(productChoice, PRODUCTS.length);
+  const productIndex = parseSelection(productChoice, products.length);
   if (productIndex === null) {
     return res.type('text/plain').send('END Invalid product. Please dial again.');
   }
 
-  const product = PRODUCTS[productIndex];
+  const product = products[productIndex];
 
   if (!marketChoice) {
-    return res.type('text/plain').send(marketMenu());
+    const locations = await fetchLocations();
+    if (locations.length === 0) {
+      return res.type('text/plain').send('END No markets available yet.');
+    }
+    return res.type('text/plain').send(locationMenu(locations));
   }
 
-  if (marketChoice === '5') {
-    return res.type('text/plain').send(productMenu());
+  const locations = await fetchLocations();
+  if (locations.length === 0) {
+    return res.type('text/plain').send('END No markets available yet.');
   }
 
-  const marketIndex = parseSelection(marketChoice, MARKETS.length);
+  if (marketChoice === String(locations.length + 1)) {
+    return res.type('text/plain').send(productMenu(products));
+  }
+
+  const marketIndex = parseSelection(marketChoice, locations.length);
   if (marketIndex === null) {
     return res.type('text/plain').send('END Invalid market. Please dial again.');
   }
 
-  const market = MARKETS[marketIndex];
+  const market = locations[marketIndex];
 
   if (!resultChoice) {
     return res.type('text/plain').send(await priceResultMenu(product, market));
   }
 
   if (resultChoice === '1') {
-    return res.type('text/plain').send(marketMenu());
+    return res.type('text/plain').send(locationMenu(locations));
   }
 
   if (resultChoice === '2') {
