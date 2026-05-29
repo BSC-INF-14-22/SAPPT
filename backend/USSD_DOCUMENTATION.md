@@ -11,7 +11,8 @@ Dial *XXX#
     ├── 1. View Prices
     ├── 2. Select Commodity
     ├── 3. Select Market
-    └── 4. Exit
+    ├── 4. Exit
+    └── 5. Estimate Selling Price
 ```
 
 ## Flow Details
@@ -76,6 +77,7 @@ Select an option:
 2. Select Commodity
 3. Select Market
 4. Exit
+5. Estimate Selling Price
 ```
 
 ---
@@ -233,6 +235,7 @@ Select an option:
 2. Select Commodity
 3. Select Market
 4. Exit
+5. Estimate Selling Price
 ```
 
 ---

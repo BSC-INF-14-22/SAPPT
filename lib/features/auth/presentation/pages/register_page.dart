@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:smart_agri_price_tracker/core/services/auth_service.dart';
 import 'package:smart_agri_price_tracker/core/services/firestore_service.dart';
+import 'package:smart_agri_price_tracker/core/services/language_service.dart';
+import 'package:smart_agri_price_tracker/core/services/notification_service.dart';
 import 'package:smart_agri_price_tracker/core/routing/app_router.dart';
+import 'package:smart_agri_price_tracker/features/auth/domain/validators.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -12,7 +15,7 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final _formKey = GlobalKey<FormState>();
+  final _registerFormKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -40,8 +43,50 @@ class _RegisterPageState extends State<RegisterPage> {
     'Mulanje',
   ];
 
+  bool get _isChichewa =>
+      LanguageService.currentLanguage == AppLanguage.chichewa;
+
+  String _text(String english, String chichewa) {
+    return _isChichewa ? chichewa : english;
+  }
+
+  String _roleLabel(String role) {
+    switch (role) {
+      case 'Farmer':
+        return _text('Farmer', 'Mlimi');
+      case 'Cooperative Officer':
+        return _text('Cooperative Officer', 'Wogwira Ntchito ku Cooperative');
+      case 'Admin':
+        return _text('Admin', 'Admin');
+      default:
+        return role;
+    }
+  }
+
+  String? _validatePassword(String? value) {
+    final error = validatePassword(value);
+    if (error == null) return null;
+
+    switch (error) {
+      case 'Enter a password':
+        return _text(error, 'Lembani mawu achinsinsi');
+      case 'Password must be at least 8 characters':
+        return _text(error, 'Mawu achinsinsi akhale osachepera zilembo 8');
+      case 'Include at least one uppercase letter':
+        return _text(error, 'Ikani chilembo chimodzi chachikulu');
+      case 'Include at least one lowercase letter':
+        return _text(error, 'Ikani chilembo chimodzi chaching\'ono');
+      case 'Include at least one number':
+        return _text(error, 'Ikani nambala imodzi');
+      case 'Include at least one special character':
+        return _text(error, 'Ikani chizindikiro chapadera chimodzi');
+      default:
+        return error;
+    }
+  }
+
   Future<void> _handleRegister() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_registerFormKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
     try {
@@ -53,21 +98,67 @@ class _RegisterPageState extends State<RegisterPage> {
 
       if (credential?.user != null) {
         // 2. Save Additional Data to Firestore using UID as document ID
+        final isCoop = _selectedRole == 'Cooperative Officer';
         await FirestoreService().setData('users', credential!.user!.uid, {
           'uid': credential.user!.uid,
           'fullName': _nameController.text.trim(),
           'email': _emailController.text.trim(),
           'phone': _phoneController.text.trim(),
+          'phoneNumber': _phoneController.text.trim(),
+          'normalizedPhone': FirestoreService.normalizePhoneForStorage(
+            _phoneController.text,
+          ),
           'role': _selectedRole,
           'district': _selectedDistrict,
           'createdAt': DateTime.now().toIso8601String(),
+          // Approval flags for Cooperative accounts
+          'approved': isCoop ? false : true,
+          'approvalStatus': isCoop ? 'pending' : 'approved',
         });
+        await FirestoreService().setPhoneLoginIndex(
+          phone: _phoneController.text,
+          email: _emailController.text,
+          uid: credential.user!.uid,
+        );
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Registration successful!')),
-          );
-          Navigator.pushReplacementNamed(context, AppRouter.home);
+          if (isCoop) {
+            // Notify Admins to approve this cooperative
+            await NotificationService().sendRoleBroadcast(
+              role: 'Admin',
+              title: 'New Cooperative Registration',
+              message:
+                  '${_nameController.text.trim()} registered as a Cooperative Officer and awaits approval.',
+            );
+
+            // Sign the user out until admin approves the account
+            await AuthService().signOut();
+
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  _text(
+                    'Registration successful! Awaiting admin approval.',
+                    'Kulembetsa kwatheka! Kudikira kuvomerezedwa ndi admin.',
+                  ),
+                ),
+              ),
+            );
+            if (!mounted) return;
+            Navigator.pushReplacementNamed(context, AppRouter.login);
+          } else {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  _text('Registration successful!', 'Kulembetsa kwatheka!'),
+                ),
+              ),
+            );
+            if (!mounted) return;
+            Navigator.pushReplacementNamed(context, AppRouter.home);
+          }
         }
       }
     } on FirebaseAuthException catch (e) {
@@ -76,38 +167,54 @@ class _RegisterPageState extends State<RegisterPage> {
         if (e.code == 'email-already-in-use') {
           message = 'This email is already registered. Please login instead.';
         }
+        if (_isChichewa) {
+          message = e.code == 'email-already-in-use'
+              ? 'Imelo iyi inalembedwa kale. Chonde lowani.'
+              : 'Kulembetsa kwalephera: ${e.message}';
+        }
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message), backgroundColor: Colors.red),
         );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('An unexpected error occurred: $e')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text(
+              'An unexpected error occurred: $e',
+              'Vuto losayembekezereka lachitika: $e',
+            ),
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  // Using shared validators from features/auth/domain/validators.dart
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Account')),
+      appBar: AppBar(
+        title: Text(_text('Create Account', 'Pangani Akaunti')),
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
             child: Form(
-              key: _formKey,
+              key: _registerFormKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Join SAPT',
+                    _text('Join SAPPT', 'Lowani SAPPT'),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
@@ -116,7 +223,10 @@ class _RegisterPageState extends State<RegisterPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Sign up to access market data',
+                    _text(
+                      'Sign up to access market data',
+                      'Lembetsani kuti mupeze zambiri za misika',
+                    ),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: Colors.grey,
@@ -127,13 +237,13 @@ class _RegisterPageState extends State<RegisterPage> {
                   // Full Name
                   TextFormField(
                     controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Full Name',
-                      prefixIcon: Icon(Icons.person_outline),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: _text('Full Name', 'Dzina Lonse'),
+                      prefixIcon: const Icon(Icons.person_outline),
+                      border: const OutlineInputBorder(),
                     ),
                     validator: (value) => (value == null || value.isEmpty)
-                        ? 'Enter your full name'
+                        ? _text('Enter your full name', 'Lembani dzina lonse')
                         : null,
                   ),
                   const SizedBox(height: 16),
@@ -141,30 +251,35 @@ class _RegisterPageState extends State<RegisterPage> {
                   // Email
                   TextFormField(
                     controller: _emailController,
-                    decoration: const InputDecoration(
-                      labelText: 'Email Address',
-                      prefixIcon: Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: _text('Email Address', 'Imelo'),
+                      prefixIcon: const Icon(Icons.email_outlined),
+                      border: const OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.emailAddress,
-                    validator: (value) =>
-                        (value == null || !value.contains('@'))
-                        ? 'Enter a valid email'
-                        : null,
+                    validator: (value) => isValidEmail(value)
+                        ? null
+                        : _text(
+                            'Enter a valid email address',
+                            'Lembani imelo yolondola',
+                          ),
                   ),
                   const SizedBox(height: 16),
 
                   // Phone
                   TextFormField(
                     controller: _phoneController,
-                    decoration: const InputDecoration(
-                      labelText: 'Phone Number',
-                      prefixIcon: Icon(Icons.phone_android),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: _text('Phone Number', 'Nambala ya Foni'),
+                      prefixIcon: const Icon(Icons.phone_android),
+                      border: const OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.phone,
                     validator: (value) => (value == null || value.isEmpty)
-                        ? 'Enter your phone number'
+                        ? _text(
+                            'Enter your phone number',
+                            'Lembani nambala yanu ya foni',
+                          )
                         : null,
                   ),
                   const SizedBox(height: 16),
@@ -172,13 +287,16 @@ class _RegisterPageState extends State<RegisterPage> {
                   // Role Dropdown
                   DropdownButtonFormField<String>(
                     initialValue: _selectedRole,
-                    decoration: const InputDecoration(
-                      labelText: 'Select Role',
-                      prefixIcon: Icon(Icons.badge_outlined),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: _text('Select Role', 'Sankhani Udindo'),
+                      prefixIcon: const Icon(Icons.badge_outlined),
+                      border: const OutlineInputBorder(),
                     ),
                     items: _roles.map((role) {
-                      return DropdownMenuItem(value: role, child: Text(role));
+                      return DropdownMenuItem(
+                        value: role,
+                        child: Text(_roleLabel(role)),
+                      );
                     }).toList(),
                     onChanged: (value) {
                       setState(() {
@@ -191,10 +309,10 @@ class _RegisterPageState extends State<RegisterPage> {
                   // District Dropdown
                   DropdownButtonFormField<String>(
                     initialValue: _selectedDistrict,
-                    decoration: const InputDecoration(
-                      labelText: 'Select District',
-                      prefixIcon: Icon(Icons.location_on_outlined),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: _text('Select District', 'Sankhani Boma'),
+                      prefixIcon: const Icon(Icons.location_on_outlined),
+                      border: const OutlineInputBorder(),
                     ),
                     items: _districts.map((district) {
                       return DropdownMenuItem(
@@ -214,7 +332,11 @@ class _RegisterPageState extends State<RegisterPage> {
                   TextFormField(
                     controller: _passwordController,
                     decoration: InputDecoration(
-                      labelText: 'Password',
+                      labelText: _text('Password', 'Mawu Achinsinsi'),
+                      helperText: _text(
+                        'Use at least 8 chars, upper/lowercase, number, and special character',
+                        'Gwiritsani zilembo 8+, zazikulu/zazing\'ono, nambala ndi chizindikiro chapadera',
+                      ),
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -229,9 +351,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       border: const OutlineInputBorder(),
                     ),
                     obscureText: _obscurePassword,
-                    validator: (value) => (value == null || value.length < 6)
-                        ? 'Password must be at least 6 characters'
-                        : null,
+                    validator: _validatePassword,
                   ),
                   const SizedBox(height: 16),
 
@@ -239,7 +359,10 @@ class _RegisterPageState extends State<RegisterPage> {
                   TextFormField(
                     controller: _confirmPasswordController,
                     decoration: InputDecoration(
-                      labelText: 'Confirm Password',
+                      labelText: _text(
+                        'Confirm Password',
+                        'Tsimikizani Mawu Achinsinsi',
+                      ),
                       prefixIcon: const Icon(Icons.lock_reset),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -257,10 +380,16 @@ class _RegisterPageState extends State<RegisterPage> {
                     obscureText: _obscureConfirmPassword,
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return 'Confirm your password';
+                        return _text(
+                          'Confirm your password',
+                          'Tsimikizani mawu achinsinsi',
+                        );
                       }
                       if (value != _passwordController.text) {
-                        return 'Passwords do not match';
+                        return _text(
+                          'Passwords do not match',
+                          'Mawu achinsinsi sakufanana',
+                        );
                       }
                       return null;
                     },
@@ -277,9 +406,11 @@ class _RegisterPageState extends State<RegisterPage> {
                     ),
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text(
-                            'REGISTER',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                        : Text(
+                            _text('REGISTER', 'LEMBETSANI'),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                   ),
                   const SizedBox(height: 16),
@@ -287,10 +418,12 @@ class _RegisterPageState extends State<RegisterPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('Already have an account?'),
+                      Text(
+                        _text('Already have an account?', 'Muli ndi akaunti?'),
+                      ),
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('Login'),
+                        child: Text(_text('Login', 'Lowani')),
                       ),
                     ],
                   ),

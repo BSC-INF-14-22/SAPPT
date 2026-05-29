@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:smart_agri_price_tracker/core/services/firestore_service.dart';
+import 'package:smart_agri_price_tracker/core/services/language_service.dart';
 
 class FarmerPricesPage extends StatefulWidget {
   const FarmerPricesPage({super.key});
@@ -22,12 +23,11 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    // final theme = Theme.of(context); // unused
+    final language = LanguageService.currentLanguage;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Markets Overview'),
-      ),
+      appBar: AppBar(title: const Text('Markets Overview')),
       body: Column(
         children: [
           // Search / Filter Bar
@@ -62,21 +62,30 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
               },
             ),
           ),
-          
+
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance.collection('products').snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('products')
+                  .snapshots(),
               builder: (context, productsSnapshot) {
-                if (productsSnapshot.connectionState == ConnectionState.waiting) {
+                if (productsSnapshot.connectionState ==
+                    ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final registeredProducts = productsSnapshot.data?.docs
-                    .map((d) => d.data()['name'].toString().toLowerCase())
-                    .toSet() ?? {};
+                final registeredProducts =
+                    productsSnapshot.data?.docs
+                        .map((d) => d.data()['name'].toString().toLowerCase())
+                        .toSet() ??
+                    {};
 
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: FirestoreService().getFilteredCollectionStream('prices', 'status', 'approved'),
+                  stream: FirestoreService().getFilteredCollectionStream(
+                    'prices',
+                    'status',
+                    'approved',
+                  ),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
@@ -93,11 +102,18 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.store_mall_directory_outlined, size: 64, color: Colors.grey[400]),
+                            Icon(
+                              Icons.store_mall_directory_outlined,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
                             const SizedBox(height: 16),
                             Text(
                               'No active markets found.',
-                              style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 16,
+                              ),
                             ),
                           ],
                         ),
@@ -105,23 +121,30 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
                     }
 
                     // Group data by Market and Location
-                    final Map<String, List<Map<String, dynamic>>> marketGroups = {};
+                    final Map<String, List<Map<String, dynamic>>> marketGroups =
+                        {};
 
                     for (var doc in docs) {
                       final data = doc.data();
                       final cropName = (data['cropName'] ?? '').toString();
-                      
+
                       // Check if crop is registered in 'products' collection
-                      if (!registeredProducts.contains(cropName.toLowerCase())) {
+                      if (!registeredProducts.contains(
+                        cropName.toLowerCase(),
+                      )) {
                         continue;
                       }
 
-                      final market = (data['market'] ?? 'Unknown Market').toString().trim();
-                      final district = (data['district'] ?? 'Not Specified').toString().trim();
-                      
+                      final market = (data['market'] ?? 'Unknown Market')
+                          .toString()
+                          .trim();
+                      final district = (data['district'] ?? 'Not Specified')
+                          .toString()
+                          .trim();
+
                       // Filter by search query
                       if (_searchQuery.isNotEmpty) {
-                        if (!market.toLowerCase().contains(_searchQuery) && 
+                        if (!market.toLowerCase().contains(_searchQuery) &&
                             !district.toLowerCase().contains(_searchQuery)) {
                           continue;
                         }
@@ -136,14 +159,20 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
 
                     if (marketGroups.isEmpty) {
                       return Center(
-                        child: Text('No markets match your criteria.', style: TextStyle(color: Colors.grey[600])),
+                        child: Text(
+                          'No markets match your criteria.',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
                       );
                     }
 
                     final groupedKeys = marketGroups.keys.toList()..sort();
 
                     return ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       itemCount: groupedKeys.length,
                       itemBuilder: (context, index) {
                         final key = groupedKeys[index];
@@ -152,7 +181,13 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
                         final district = parts[1];
                         final productsList = marketGroups[key]!;
 
-                        return _buildMarketCard(context, marketName, district, productsList);
+                        return _buildMarketCard(
+                          context,
+                          marketName,
+                          district,
+                          productsList,
+                          language,
+                        );
                       },
                     );
                   },
@@ -165,7 +200,13 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
     );
   }
 
-  Widget _buildMarketCard(BuildContext context, String marketName, String district, List<Map<String, dynamic>> products) {
+  Widget _buildMarketCard(
+    BuildContext context,
+    String marketName,
+    String district,
+    List<Map<String, dynamic>> products,
+    AppLanguage language,
+  ) {
     final theme = Theme.of(context);
 
     return Card(
@@ -180,7 +221,9 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: theme.primaryColor.withAlpha(20),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
             ),
             child: Row(
               children: [
@@ -190,8 +233,12 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
                     color: Colors.white,
                     shape: BoxShape.circle,
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 4, offset: const Offset(0, 2))
-                    ]
+                      BoxShadow(
+                        color: Colors.black.withAlpha(20),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Icon(Icons.storefront, color: theme.primaryColor),
                 ),
@@ -202,49 +249,76 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
                     children: [
                       Text(
                         marketName,
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(Icons.location_on, size: 14, color: Colors.grey[700]),
+                          Icon(
+                            Icons.location_on,
+                            size: 14,
+                            color: Colors.grey[700],
+                          ),
                           const SizedBox(width: 4),
-                          Text(district, style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                          Text(
+                            district,
+                            style: TextStyle(
+                              color: Colors.grey[700],
+                              fontSize: 13,
+                            ),
+                          ),
                         ],
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     '${products.length} Products',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.primaryColor),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: theme.primaryColor,
+                    ),
                   ),
-                )
+                ),
               ],
             ),
           ),
-          
+
           // Products List
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: products.map((product) {
-                final cropName = product['cropName'] ?? 'Unknown';
+                final cropName = (product['cropName'] ?? 'Unknown').toString();
+                final displayCropName = LanguageService.cropNameForLanguage(
+                  cropName,
+                  language,
+                );
                 final price = product['price'] ?? '0';
                 final unit = product['unit'] ?? 'kg';
-                
+
                 String formattedDate = '';
                 if (product['updatedAt'] != null) {
                   if (product['updatedAt'] is Timestamp) {
-                    formattedDate = DateFormat('MMM d').format((product['updatedAt'] as Timestamp).toDate());
+                    formattedDate = DateFormat(
+                      'MMM d',
+                    ).format((product['updatedAt'] as Timestamp).toDate());
                   } else if (product['updatedAt'] is String) {
-                    formattedDate = DateFormat('MMM d').format(DateTime.parse(product['updatedAt']));
+                    formattedDate = DateFormat(
+                      'MMM d',
+                    ).format(DateTime.parse(product['updatedAt']));
                   }
                 }
 
@@ -264,17 +338,31 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    cropName,
-                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                                    displayCropName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15,
+                                    ),
                                   ),
                                   if (product['uploadedBy'] != null)
                                     FutureBuilder<Map<String, dynamic>?>(
-                                      future: FirestoreService().getUserByUid(product['uploadedBy']),
+                                      future: FirestoreService().getUserByUid(
+                                        product['uploadedBy'],
+                                      ),
                                       builder: (context, userSnapshot) {
-                                        if (userSnapshot.connectionState == ConnectionState.waiting) {
-                                          return const Text('Loading cooperative...', style: TextStyle(fontSize: 11, color: Colors.grey));
+                                        if (userSnapshot.connectionState ==
+                                            ConnectionState.waiting) {
+                                          return const Text(
+                                            'Loading cooperative...',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey,
+                                            ),
+                                          );
                                         }
-                                        final coopName = userSnapshot.data?['fullName'] ?? 'Unknown Cooperative';
+                                        final coopName =
+                                            userSnapshot.data?['fullName'] ??
+                                            'Unknown Cooperative';
                                         return Text(
                                           'By: $coopName',
                                           style: TextStyle(
@@ -298,12 +386,18 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
                         children: [
                           Text(
                             'MK $price / $unit',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                           if (formattedDate.isNotEmpty)
                             Text(
                               'Updated $formattedDate',
-                              style: const TextStyle(fontSize: 11, color: Colors.grey),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
                             ),
                         ],
                       ),

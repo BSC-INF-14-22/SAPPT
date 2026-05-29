@@ -64,20 +64,153 @@ class FirestoreService {
   /// Get user by phone number
   Future<Map<String, dynamic>?> getUserByPhone(String phone) async {
     try {
-      final snapshot = await _db
-          .collection('users')
-          .where('phone', isEqualTo: phone)
-          .limit(1)
-          .get();
-      
-      if (snapshot.docs.isNotEmpty) {
-        return snapshot.docs.first.data();
+      const phoneFields = ['phone', 'phoneNumber', 'mobile', 'normalizedPhone'];
+      for (final phoneVariant in phoneLookupVariants(phone)) {
+        for (final field in phoneFields) {
+          final snapshot = await _db
+              .collection('users')
+              .where(field, isEqualTo: phoneVariant)
+              .limit(1)
+              .get();
+
+          if (snapshot.docs.isNotEmpty) {
+            return snapshot.docs.first.data();
+          }
+        }
       }
+
+      final targetKeys = phoneComparisonKeys(phone);
+      final usersSnapshot = await _db.collection('users').limit(500).get();
+      for (final doc in usersSnapshot.docs) {
+        final data = doc.data();
+        final savedPhone = data['phone'] ??
+            data['phoneNumber'] ??
+            data['mobile'] ??
+            data['normalizedPhone'];
+
+        if (savedPhone == null) continue;
+        final savedKeys = phoneComparisonKeys(savedPhone.toString());
+        if (targetKeys.intersection(savedKeys).isNotEmpty) {
+          return data;
+        }
+      }
+
       return null;
     } catch (e) {
       debugPrint('Error getting user by phone: $e');
       return null;
     }
+  }
+
+  Future<String?> getEmailByPhone(String phone) async {
+    try {
+      for (final phoneKey in phoneComparisonKeys(phone)) {
+        final doc = await _db.collection('phone_login').doc(phoneKey).get();
+        final email = doc.data()?['email'];
+        if (email is String && email.trim().isNotEmpty) {
+          return email.trim();
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error getting login email by phone: $e');
+      return null;
+    }
+  }
+
+  Future<void> setPhoneLoginIndex({
+    required String phone,
+    required String email,
+    required String uid,
+  }) async {
+    final normalizedPhone = normalizePhoneForStorage(phone);
+    if (normalizedPhone.isEmpty) return;
+
+    await _db.collection('phone_login').doc(normalizedPhone).set({
+      'email': email.trim(),
+      'uid': uid,
+      'phone': phone.trim(),
+      'normalizedPhone': normalizedPhone,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  static String normalizePhoneForStorage(String phone) {
+    final keys = phoneComparisonKeys(phone);
+    if (keys.isEmpty) return phone.trim();
+    return keys.first;
+  }
+
+  static Set<String> phoneComparisonKeys(String phone) {
+    final digitsOnly = phone.replaceAll(RegExp(r'\D'), '');
+    final keys = <String>{};
+
+    if (digitsOnly.isEmpty) return keys;
+
+    keys.add(digitsOnly);
+
+    if (digitsOnly.startsWith('00') && digitsOnly.length > 2) {
+      keys.add(digitsOnly.substring(2));
+    }
+
+    if (digitsOnly.startsWith('265') && digitsOnly.length > 3) {
+      final local = digitsOnly.substring(3);
+      keys.add(local);
+      keys.add('0$local');
+      keys.add('265$local');
+    } else if (digitsOnly.startsWith('0') && digitsOnly.length > 1) {
+      final local = digitsOnly.substring(1);
+      keys.add(local);
+      keys.add('0$local');
+      keys.add('265$local');
+    } else if (digitsOnly.length == 9) {
+      keys.add('0$digitsOnly');
+      keys.add('265$digitsOnly');
+    }
+
+    return keys;
+  }
+
+  static List<String> phoneLookupVariants(String phone) {
+    final trimmed = phone.trim();
+    final compact = trimmed.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+    final digitsOnly = compact.replaceAll(RegExp(r'\D'), '');
+    final variants = <String>{trimmed, compact};
+
+    variants.addAll(phoneComparisonKeys(phone));
+    variants.addAll(phoneComparisonKeys(phone).map((value) => '+$value'));
+
+    if (digitsOnly.isNotEmpty) {
+      variants.add(digitsOnly);
+      variants.add('+$digitsOnly');
+
+      if (digitsOnly.startsWith('0') && digitsOnly.length > 1) {
+        final withoutLeadingZero = digitsOnly.substring(1);
+        variants.add(withoutLeadingZero);
+        variants.add('+265$withoutLeadingZero');
+        variants.add('265$withoutLeadingZero');
+      }
+
+      if (digitsOnly.startsWith('265') && digitsOnly.length > 3) {
+        final local = digitsOnly.substring(3);
+        variants.add('+$digitsOnly');
+        variants.add('0$local');
+      }
+
+      if (digitsOnly.startsWith('260') && digitsOnly.length > 3) {
+        final local = digitsOnly.substring(3);
+        variants.add('+$digitsOnly');
+        variants.add('0$local');
+      }
+
+      if (digitsOnly.length == 9) {
+        variants.add('0$digitsOnly');
+        variants.add('+265$digitsOnly');
+        variants.add('265$digitsOnly');
+      }
+    }
+
+    return variants.where((value) => value.isNotEmpty).toList();
   }
 
   /// Get user by UID (using document ID)

@@ -59,7 +59,7 @@ class MarketAnalyticsService {
       'Ordinary Least Squares linear regression';
   static const String predictionModelName = '7-day linear regression forecast';
   static const String fairPriceModelName =
-      '10% trimmed mean plus 12% wholesale profit margin';
+      '85% conservative wholesale benchmark from recent market prices';
 
   final FirebaseFirestore _db;
 
@@ -130,7 +130,6 @@ class MarketAnalyticsService {
     final recent = _recentWindow(data);
     final prices = recent.map((point) => point.price).toList();
     final currentAverage = _mean(prices);
-    final fairWholesalePrice = _trimmedMean(prices) * 1.12;
     final best = recent.reduce((a, b) => a.price >= b.price ? a : b);
     final regression = _linearRegression(data);
     final latest = data.last;
@@ -142,6 +141,12 @@ class MarketAnalyticsService {
     final trendPercent = latest.price == 0
         ? 0.0
         : ((predictedNextPrice - latest.price) / latest.price) * 100;
+    final fairWholesalePrice = _fairWholesalePrice(
+      recentPrices: prices,
+      currentAverage: currentAverage,
+      predictedNextPrice: predictedNextPrice,
+      latestPrice: latest.price,
+    );
 
     return CropMarketInsight(
       cropName: cropName,
@@ -186,6 +191,26 @@ class MarketAnalyticsService {
     final trimCount = sorted.length >= 10 ? (sorted.length * 0.1).floor() : 0;
     final trimmed = sorted.sublist(trimCount, sorted.length - trimCount);
     return _mean(trimmed.isEmpty ? sorted : trimmed);
+  }
+
+  double _fairWholesalePrice({
+    required List<double> recentPrices,
+    required double currentAverage,
+    required double predictedNextPrice,
+    required double latestPrice,
+  }) {
+    final trimmedMean = _trimmedMean(recentPrices);
+    final usablePrediction = predictedNextPrice > 0
+        ? predictedNextPrice
+        : trimmedMean;
+    final marketBenchmark = [
+      trimmedMean,
+      currentAverage,
+      usablePrediction,
+      latestPrice,
+    ].where((value) => value > 0).reduce(min);
+
+    return marketBenchmark * 0.85;
   }
 
   _Regression _linearRegression(List<PricePoint> points) {

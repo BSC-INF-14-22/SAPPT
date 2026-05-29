@@ -49,6 +49,25 @@ const serviceAccountFromFile = (filePath) => {
   }
 };
 
+const findLocalServiceAccountPath = () => {
+  const searchDirs = [process.cwd(), __dirname, path.resolve(__dirname, '../..')];
+
+  for (const dir of searchDirs) {
+    if (!fs.existsSync(dir)) continue;
+
+    const match = fs
+      .readdirSync(dir)
+      .find((fileName) => (
+        fileName.startsWith('smart-agri-price-tracker-firebase-adminsdk-')
+        && fileName.endsWith('.json')
+      ));
+
+    if (match) return path.join(dir, match);
+  }
+
+  return null;
+};
+
 const serviceAccountFromEnvVars = () => {
   if (!present(process.env.FIREBASE_PRIVATE_KEY) || !present(process.env.FIREBASE_CLIENT_EMAIL)) {
     return null;
@@ -78,8 +97,24 @@ const getServiceAccount = () => {
   }
 
   if (present(process.env.FIREBASE_SERVICE_ACCOUNT_PATH)) {
-    return serviceAccountFromFile(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+    const configuredPath = path.resolve(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+    if (fs.existsSync(configuredPath)) {
+      return serviceAccountFromFile(configuredPath);
+    }
+
+    const localPath = findLocalServiceAccountPath();
+    if (localPath) {
+      console.warn(
+        `FIREBASE_SERVICE_ACCOUNT_PATH points to a missing file. Using local service account: ${path.basename(localPath)}`
+      );
+      return serviceAccountFromFile(localPath);
+    }
+
+    return serviceAccountFromFile(configuredPath);
   }
+
+  const localPath = findLocalServiceAccountPath();
+  if (localPath) return serviceAccountFromFile(localPath);
 
   return serviceAccountFromEnvVars();
 };

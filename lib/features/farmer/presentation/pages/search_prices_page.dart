@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:smart_agri_price_tracker/core/services/firestore_service.dart';
+import 'package:smart_agri_price_tracker/core/services/language_service.dart';
 
 class SearchPricesPage extends StatefulWidget {
   const SearchPricesPage({super.key});
@@ -14,11 +15,20 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String? _selectedDistrict;
-  String? _selectedMarket;
   bool _sortByLatest = true;
 
   final List<String> _districts = [
-    'All', 'Lilongwe', 'Blantyre', 'Mzuzu', 'Zomba', 'Dedza', 'Kasungu', 'Mangochi', 'Salima', 'Thyolo', 'Mulanje'
+    'All',
+    'Lilongwe',
+    'Blantyre',
+    'Mzuzu',
+    'Zomba',
+    'Dedza',
+    'Kasungu',
+    'Mangochi',
+    'Salima',
+    'Thyolo',
+    'Mulanje',
   ];
 
   @override
@@ -26,15 +36,11 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Search Market Prices'),
-      ),
+      appBar: AppBar(title: const Text('Search Market Prices')),
       body: Column(
         children: [
           _buildSearchAndFilters(theme),
-          Expanded(
-            child: _buildResultsList(),
-          ),
+          Expanded(child: _buildResultsList()),
         ],
       ),
     );
@@ -58,15 +64,15 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
             decoration: InputDecoration(
               hintText: 'Search crops (e.g. Maize, Beans)',
               prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isNotEmpty 
-                ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                  )
-                : null,
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    )
+                  : null,
               filled: true,
               fillColor: Colors.white,
               border: OutlineInputBorder(
@@ -79,7 +85,7 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
             },
           ),
           const SizedBox(height: 12),
-          
+
           // Filter Chips Row
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -90,15 +96,17 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
                   label: _selectedDistrict ?? 'District',
                   icon: Icons.location_on_outlined,
                   onPressed: _showDistrictPicker,
-                  isActive: _selectedDistrict != null && _selectedDistrict != 'All',
+                  isActive:
+                      _selectedDistrict != null && _selectedDistrict != 'All',
                 ),
                 const SizedBox(width: 8),
-                
+
                 // Sort Toggle
                 _buildFilterChip(
                   label: _sortByLatest ? 'Latest First' : 'Price: Low-High',
                   icon: Icons.sort_rounded,
-                  onPressed: () => setState(() => _sortByLatest = !_sortByLatest),
+                  onPressed: () =>
+                      setState(() => _sortByLatest = !_sortByLatest),
                   isActive: true,
                 ),
               ],
@@ -110,16 +118,16 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
   }
 
   Widget _buildFilterChip({
-    required String label, 
-    required IconData icon, 
+    required String label,
+    required IconData icon,
     required VoidCallback onPressed,
     required bool isActive,
   }) {
     final theme = Theme.of(context);
     return ActionChip(
       avatar: Icon(
-        icon, 
-        size: 16, 
+        icon,
+        size: 16,
         color: isActive ? Colors.white : theme.primaryColor,
       ),
       label: Text(label),
@@ -152,7 +160,9 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
               final d = _districts[index];
               return ListTile(
                 title: Text(d),
-                trailing: _selectedDistrict == d ? const Icon(Icons.check, color: Colors.green) : null,
+                trailing: _selectedDistrict == d
+                    ? const Icon(Icons.check, color: Colors.green)
+                    : null,
                 onTap: () {
                   setState(() => _selectedDistrict = d == 'All' ? null : d);
                   Navigator.pop(context);
@@ -173,12 +183,18 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final registeredProducts = productsSnapshot.data?.docs
-            .map((d) => d.data()['name'].toString().toLowerCase())
-            .toSet() ?? {};
+        final registeredProducts =
+            productsSnapshot.data?.docs
+                .map((d) => d.data()['name'].toString().toLowerCase())
+                .toSet() ??
+            {};
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirestoreService().getFilteredCollectionStream('prices', 'status', 'approved'),
+          stream: FirestoreService().getFilteredCollectionStream(
+            'prices',
+            'status',
+            'approved',
+          ),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -189,17 +205,30 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
             }
 
             var docs = snapshot.data?.docs ?? [];
+            final language = LanguageService.currentLanguage;
 
             // Apply Client-Side Filters
             var filteredList = docs.where((doc) {
               final data = doc.data();
               final cropName = (data['cropName'] ?? '').toString();
+              final displayCropName = LanguageService.cropNameForLanguage(
+                cropName,
+                language,
+              );
               final district = data['district'] ?? '';
-              
-              bool isRegistered = registeredProducts.contains(cropName.toLowerCase());
-              bool matchesSearch = cropName.toLowerCase().contains(_searchQuery);
-              bool matchesDistrict = _selectedDistrict == null || _selectedDistrict == 'All' || district == _selectedDistrict;
-              
+
+              bool isRegistered = registeredProducts.contains(
+                cropName.toLowerCase(),
+              );
+              bool matchesSearch = cropName.toLowerCase().contains(
+                    _searchQuery,
+                  ) ||
+                  displayCropName.toLowerCase().contains(_searchQuery);
+              bool matchesDistrict =
+                  _selectedDistrict == null ||
+                  _selectedDistrict == 'All' ||
+                  district == _selectedDistrict;
+
               return isRegistered && matchesSearch && matchesDistrict;
             }).toList();
 
@@ -213,8 +242,10 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
                 if (dtA == null || dtB == null) return 0;
                 return dtB.compareTo(dtA);
               } else {
-                final priceA = double.tryParse(a.data()['price']?.toString() ?? '0') ?? 0;
-                final priceB = double.tryParse(b.data()['price']?.toString() ?? '0') ?? 0;
+                final priceA =
+                    double.tryParse(a.data()['price']?.toString() ?? '0') ?? 0;
+                final priceB =
+                    double.tryParse(b.data()['price']?.toString() ?? '0') ?? 0;
                 return priceA.compareTo(priceB);
               }
             });
@@ -224,7 +255,11 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.search_off_rounded, size: 64, color: Colors.grey[300]),
+                    Icon(
+                      Icons.search_off_rounded,
+                      size: 64,
+                      color: Colors.grey[300],
+                    ),
                     const SizedBox(height: 16),
                     const Text('No crops found matching your criteria.'),
                   ],
@@ -243,7 +278,7 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
             );
           },
         );
-      }
+      },
     );
   }
 
@@ -256,12 +291,17 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
 
   Widget _buildPriceCard(BuildContext context, Map<String, dynamic> data) {
     final theme = Theme.of(context);
-    final cropName = data['cropName'] ?? 'Unknown Crop';
+    final language = LanguageService.currentLanguage;
+    final cropName = (data['cropName'] ?? 'Unknown Crop').toString();
+    final displayCropName = LanguageService.cropNameForLanguage(
+      cropName,
+      language,
+    );
     final price = data['price'] ?? '0';
     final unit = data['unit'] ?? 'kg';
     final market = data['market'] ?? 'Local Market';
     final district = data['district'] ?? 'Not Specified';
-    
+
     String formattedDate = 'Just now';
     final dt = _parseDate(data['updatedAt']);
     if (dt != null) {
@@ -271,22 +311,35 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.all(16),
-        title: Text(cropName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Text(
+          displayCropName,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text('$market, $district', style: TextStyle(color: Colors.grey[600])),
+            Text(
+              '$market, $district',
+              style: TextStyle(color: Colors.grey[600]),
+            ),
             const SizedBox(height: 4),
-            Text('Updated: $formattedDate', style: const TextStyle(fontSize: 12)),
+            Text(
+              'Updated: $formattedDate',
+              style: const TextStyle(fontSize: 12),
+            ),
             if (data['uploadedBy'] != null)
               FutureBuilder<Map<String, dynamic>?>(
                 future: FirestoreService().getUserByUid(data['uploadedBy']),
                 builder: (context, userSnapshot) {
                   if (userSnapshot.connectionState == ConnectionState.waiting) {
-                    return const Text('Loading cooperative...', style: TextStyle(fontSize: 11, color: Colors.grey));
+                    return const Text(
+                      'Loading cooperative...',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    );
                   }
-                  final coopName = userSnapshot.data?['fullName'] ?? 'Unknown Cooperative';
+                  final coopName =
+                      userSnapshot.data?['fullName'] ?? 'Unknown Cooperative';
                   return Padding(
                     padding: const EdgeInsets.only(top: 4.0),
                     child: Text(
@@ -314,7 +367,10 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
                 fontSize: 16,
               ),
             ),
-            Text('/ $unit', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            Text(
+              '/ $unit',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ],
         ),
       ),

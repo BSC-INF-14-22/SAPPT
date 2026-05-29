@@ -9,7 +9,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
 
@@ -33,8 +34,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   void _navigateToNext() async {
     await Future.delayed(const Duration(seconds: 3));
+    _openNextScreen();
+  }
+
+  void _openNextScreen() {
     if (mounted) {
-      Navigator.of(context).pushReplacementNamed(AppRouter.home);
+      Navigator.of(context).pushReplacementNamed(AppRouter.landing);
     }
   }
 
@@ -49,7 +54,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     return Scaffold(
       backgroundColor: AppColors.background,
       body: GestureDetector(
-        onTap: () => Navigator.of(context).pushReplacementNamed(AppRouter.home),
+        onTap: _openNextScreen,
         child: Center(
           child: FadeTransition(
             opacity: _fadeAnimation,

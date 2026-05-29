@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:smart_agri_price_tracker/core/services/language_service.dart';
 import 'package:smart_agri_price_tracker/core/services/market_analytics_service.dart';
 
 class FarmerTrendsPage extends StatefulWidget {
@@ -14,6 +15,7 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final language = LanguageService.currentLanguage;
     final currencyFormat = NumberFormat.currency(
       symbol: 'MK ',
       decimalDigits: 0,
@@ -58,25 +60,27 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
                 ),
                 items: cropNames
                     .map(
-                      (crop) =>
-                          DropdownMenuItem(value: crop, child: Text(crop)),
+                      (crop) => DropdownMenuItem(
+                        value: crop,
+                        child: Text(_cropName(crop, language)),
+                      ),
                     )
                     .toList(),
                 onChanged: (value) => setState(() => _selectedCrop = value),
               ),
               const SizedBox(height: 20),
-              _buildSummaryCard(selected, currencyFormat),
-              const SizedBox(height: 16),
-              _buildModelCard(selected),
+              _buildSummaryCard(selected, currencyFormat, language),
               const SizedBox(height: 24),
               Text(
-                'All Field Crops',
+                _text(language, 'All Field Crops', 'Mbewu Zonse'),
                 style: Theme.of(
                   context,
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 12),
-              ...insights.map((item) => _buildCropRow(item, currencyFormat)),
+              ...insights.map(
+                (item) => _buildCropRow(item, currencyFormat, language),
+              ),
             ],
           );
         },
@@ -87,6 +91,7 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
   Widget _buildSummaryCard(
     CropMarketInsight insight,
     NumberFormat currencyFormat,
+    AppLanguage language,
   ) {
     final location = insight.bestDistrict.isEmpty
         ? insight.bestMarket
@@ -99,58 +104,47 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              insight.cropName,
+              _cropName(insight.cropName, language),
               style: Theme.of(
                 context,
               ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             _metric(
-              'Trend',
-              '${insight.trendLabel} (${insight.trendPercent.toStringAsFixed(1)}%)',
+              _text(language, 'Trend', 'Kusintha'),
+              '${_trendText(insight.trendLabel, language)} (${insight.trendPercent.toStringAsFixed(1)}%)',
               Icons.trending_up,
             ),
             _metric(
-              'Predicted future price',
+              _text(
+                language,
+                'Predicted future price',
+                'Mtengo woyembekezeka',
+              ),
               '${currencyFormat.format(insight.predictedNextPrice)}/${insight.unit}',
               Icons.insights,
             ),
             _metric(
-              'Recommended best market',
-              '$location at ${currencyFormat.format(insight.bestMarketPrice)}/${insight.unit}',
+              _text(
+                language,
+                'Recommended best market',
+                'Msika wabwino wolimbikitsidwa',
+              ),
+              _text(
+                language,
+                '$location at ${currencyFormat.format(insight.bestMarketPrice)}/${insight.unit}',
+                '$location pa ${currencyFormat.format(insight.bestMarketPrice)}/${insight.unit}',
+              ),
               Icons.storefront,
             ),
             _metric(
-              'Fair wholesale sell price',
+              _text(
+                language,
+                'Fair wholesale sell price',
+                'Mtengo woyenera wambiri',
+              ),
               '${currencyFormat.format(insight.fairWholesalePrice)}/${insight.unit}',
               Icons.price_check,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModelCard(CropMarketInsight insight) {
-    return Card(
-      color: Colors.blue.withAlpha(20),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Models Used',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text('Trend model: ${insight.trendModel}.'),
-            Text('Prediction model: ${insight.predictionModel}.'),
-            Text('Fair wholesale model: ${insight.fairPriceModel}.'),
-            const SizedBox(height: 8),
-            Text(
-              'Sample size: ${insight.sampleSize} approved cooperative price reports.',
-              style: TextStyle(color: Colors.grey[700], fontSize: 12),
             ),
           ],
         ),
@@ -186,14 +180,23 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
     );
   }
 
-  Widget _buildCropRow(CropMarketInsight insight, NumberFormat currencyFormat) {
+  Widget _buildCropRow(
+    CropMarketInsight insight,
+    NumberFormat currencyFormat,
+    AppLanguage language,
+  ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
-        title: Text(insight.cropName),
+        title: Text(_cropName(insight.cropName, language)),
         subtitle: Text(
-          '${insight.trendLabel} - best: ${insight.bestMarket}'
-          '${insight.bestDistrict.isEmpty ? '' : ', ${insight.bestDistrict}'}',
+          _text(
+            language,
+            '${insight.trendLabel} - best: ${insight.bestMarket}'
+                '${insight.bestDistrict.isEmpty ? '' : ', ${insight.bestDistrict}'}',
+            '${_trendText(insight.trendLabel, language)} - wabwino: ${insight.bestMarket}'
+                '${insight.bestDistrict.isEmpty ? '' : ', ${insight.bestDistrict}'}',
+          ),
         ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -204,12 +207,39 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             Text(
-              '/${insight.unit} wholesale',
+              _text(
+                language,
+                '/${insight.unit} wholesale',
+                '/${insight.unit} wambiri',
+              ),
               style: const TextStyle(fontSize: 11),
             ),
           ],
         ),
       ),
     );
+  }
+
+  String _cropName(String cropName, AppLanguage language) {
+    return LanguageService.cropNameForLanguage(cropName, language);
+  }
+
+  String _text(AppLanguage language, String english, String chichewa) {
+    return language == AppLanguage.chichewa ? chichewa : english;
+  }
+
+  String _trendText(String trendLabel, AppLanguage language) {
+    if (language != AppLanguage.chichewa) return trendLabel;
+
+    switch (trendLabel) {
+      case 'Rising':
+        return 'Ikukwera';
+      case 'Falling':
+        return 'Ikutsika';
+      case 'Stable':
+        return 'Yokhazikika';
+      default:
+        return trendLabel;
+    }
   }
 }

@@ -9,7 +9,7 @@ class MyPricesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    // final theme = Theme.of(context); // unused
     final user = AuthService().currentUser;
 
     if (user == null) {
@@ -17,11 +17,13 @@ class MyPricesPage extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Submissions'),
-      ),
+      appBar: AppBar(title: const Text('My Submissions')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirestoreService().getFilteredCollectionStream('prices', 'uploadedBy', user.uid),
+        stream: FirestoreService().getFilteredCollectionStream(
+          'prices',
+          'uploadedBy',
+          user.uid,
+        ),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -38,7 +40,11 @@ class MyPricesPage extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.history_edu_outlined, size: 64, color: Colors.grey[300]),
+                  Icon(
+                    Icons.history_edu_outlined,
+                    size: 64,
+                    color: Colors.grey[300],
+                  ),
                   const SizedBox(height: 16),
                   const Text('You haven\'t submitted any prices yet.'),
                 ],
@@ -61,14 +67,17 @@ class MyPricesPage extends StatelessWidget {
     );
   }
 
-  Widget _buildMyPriceCard(BuildContext context, String docId, Map<String, dynamic> data) {
-    final theme = Theme.of(context);
+  Widget _buildMyPriceCard(
+    BuildContext context,
+    String docId,
+    Map<String, dynamic> data,
+  ) {
     final cropName = data['cropName'] ?? 'Unknown';
     final price = data['price'] ?? '0';
     final market = data['market'] ?? 'Local';
     final status = data['status'] ?? 'pending';
-    
-    final canEdit = status == 'pending' || status == 'approved';
+
+    // final canEdit = status == 'pending' || status == 'approved'; // unused
     Color statusColor;
     IconData statusIcon;
     switch (status) {
@@ -88,7 +97,9 @@ class MyPricesPage extends StatelessWidget {
     String formattedDate = 'Recent';
     if (data['updatedAt'] != null) {
       if (data['updatedAt'] is Timestamp) {
-        formattedDate = DateFormat('MMM d, yyyy').format((data['updatedAt'] as Timestamp).toDate());
+        formattedDate = DateFormat(
+          'MMM d, yyyy',
+        ).format((data['updatedAt'] as Timestamp).toDate());
       }
     }
 
@@ -97,7 +108,10 @@ class MyPricesPage extends StatelessWidget {
         contentPadding: const EdgeInsets.all(16),
         title: Row(
           children: [
-            Text(cropName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            Text(
+              cropName,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -127,17 +141,23 @@ class MyPricesPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
-            Text('MK $price | $market', style: TextStyle(color: Colors.grey[700])),
+            Text(
+              'MK $price | $market',
+              style: TextStyle(color: Colors.grey[700]),
+            ),
             const SizedBox(height: 4),
-            Text('Submitted: $formattedDate', style: const TextStyle(fontSize: 12)),
+            Text(
+              'Submitted: $formattedDate',
+              style: const TextStyle(fontSize: 12),
+            ),
           ],
         ),
         trailing: PopupMenuButton<String>(
           onSelected: (value) {
             if (value == 'edit') {
               Navigator.pushNamed(
-                context, 
-                '/edit-price', 
+                context,
+                '/edit-price',
                 arguments: {'docId': docId, 'data': data},
               );
             } else if (value == 'delete') {
@@ -171,12 +191,18 @@ class MyPricesPage extends StatelessWidget {
     );
   }
 
-  void _showDeleteConfirmation(BuildContext context, String docId, String cropName) {
+  void _showDeleteConfirmation(
+    BuildContext context,
+    String docId,
+    String cropName,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Confirm Deletion'),
-        content: Text('Are you sure you want to delete the price entry for $cropName? This will also remove the crop from the global products catalog.'),
+        content: Text(
+          'Are you sure you want to delete the price entry for $cropName? This will also remove the crop from the global products catalog.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -188,26 +214,34 @@ class MyPricesPage extends StatelessWidget {
               try {
                 // 1. Delete the price entry
                 await FirestoreService().deleteData('prices', docId);
-                
+
                 // 2. Delete the associated product from the catalog
                 final productQuery = await FirebaseFirestore.instance
                     .collection('products')
                     .where('name', isEqualTo: cropName)
                     .get();
-                    
+
                 for (var doc in productQuery.docs) {
                   await FirestoreService().deleteData('products', doc.id);
                 }
 
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Price entry and product deleted successfully.'), backgroundColor: Colors.green),
+                    const SnackBar(
+                      content: Text(
+                        'Price entry and product deleted successfully.',
+                      ),
+                      backgroundColor: Colors.green,
+                    ),
                   );
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                    SnackBar(
+                      content: Text('Error: $e'),
+                      backgroundColor: Colors.red,
+                    ),
                   );
                 }
               }
@@ -220,4 +254,3 @@ class MyPricesPage extends StatelessWidget {
     );
   }
 }
-

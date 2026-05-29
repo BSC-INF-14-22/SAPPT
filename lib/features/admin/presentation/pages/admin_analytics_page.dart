@@ -1,7 +1,9 @@
+// ignore_for_file: curly_braces_in_flow_control_structures
+
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
+// removed unused import
 
 class AdminAnalyticsPage extends StatefulWidget {
   const AdminAnalyticsPage({super.key});
@@ -116,16 +118,18 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
               final role = data['role'] ?? 'Farmer';
               if (role == 'Farmer') {
                 farmers++;
-              } else if (role == 'Cooperative Officer')
+              } else if (role == 'Cooperative Officer') {
                 officers++;
-              else if (role == 'Admin')
+              } else if (role == 'Admin') {
                 admins++;
+              }
             }
           }
 
           final total = farmers + officers + admins;
-          if (total == 0)
+          if (total == 0) {
             return const Center(child: Text('No user data available'));
+          }
 
           return Row(
             children: [
@@ -220,8 +224,9 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
           }
 
           final docs = snapshot.data?.docs ?? [];
-          if (docs.isEmpty)
+          if (docs.isEmpty) {
             return const Center(child: Text('No submission data'));
+          }
 
           Map<int, int> submissionsByDay = {
             1: 0,
@@ -265,8 +270,9 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
                     'Sun',
                   ];
                   final index = value.toInt() - 1;
-                  if (index < 0 || index >= days.length)
+                  if (index < 0 || index >= days.length) {
                     return const SizedBox.shrink();
+                  }
                   return Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Text(
@@ -410,8 +416,9 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
                 showTitles: true,
                 getTitlesWidget: (double value, TitleMeta meta) {
                   final index = value.toInt();
-                  if (index < 0 || index >= topCrops.length)
+                  if (index < 0 || index >= topCrops.length) {
                     return const SizedBox.shrink();
+                  }
                   return Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Text(

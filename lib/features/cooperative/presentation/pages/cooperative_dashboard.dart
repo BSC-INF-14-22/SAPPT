@@ -26,7 +26,7 @@ class CooperativeDashboard extends StatelessWidget {
             onPressed: () async {
               await AuthService().signOut();
               if (context.mounted) {
-                Navigator.of(context).pushReplacementNamed(AppRouter.home);
+                Navigator.of(context).pushReplacementNamed(AppRouter.landing);
               }
             },
             icon: const Icon(Icons.logout),
@@ -87,74 +87,87 @@ class CooperativeDashboard extends StatelessWidget {
             const SizedBox(height: 32),
 
             // Grid of Action Cards
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              childAspectRatio: 1.0,
-              children: [
-                _buildDashboardCard(
-                  context,
-                  'Upload Prices',
-                  Icons.cloud_upload_outlined,
-                  Colors.green,
-                  () => Navigator.pushNamed(context, AppRouter.uploadPrice),
-                ),
-                _buildDashboardCard(
-                  context,
-                  'My Prices',
-                  Icons.list_alt_rounded,
-                  Colors.blue,
-                  () => Navigator.pushNamed(context, AppRouter.myPrices),
-                ),
-                _buildDashboardCard(
-                  context,
-                  'Edit Prices',
-                  Icons.edit_note_rounded,
-                  Colors.orange,
-                  () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Select a price from "My Prices" to edit it.',
-                        ),
-                      ),
-                    );
-                    Navigator.pushNamed(context, AppRouter.myPrices);
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final cardSize = (constraints.maxWidth - 16) / 2;
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    mainAxisExtent: cardSize,
+                  ),
+                  itemCount: 4,
+                  itemBuilder: (context, index) {
+                    switch (index) {
+                      case 0:
+                        return _buildDashboardCard(
+                          context,
+                          'Upload Prices',
+                          Icons.cloud_upload_outlined,
+                          Colors.green,
+                          () => Navigator.pushNamed(
+                            context,
+                            AppRouter.uploadPrice,
+                          ),
+                        );
+                      case 1:
+                        return _buildDashboardCard(
+                          context,
+                          'My Prices',
+                          Icons.list_alt_rounded,
+                          Colors.blue,
+                          () =>
+                              Navigator.pushNamed(context, AppRouter.myPrices),
+                        );
+                      case 2:
+                        return _buildDashboardCard(
+                          context,
+                          'Edit Prices',
+                          Icons.edit_note_rounded,
+                          Colors.orange,
+                          () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Select a price from "My Prices" to edit it.',
+                                ),
+                              ),
+                            );
+                            Navigator.pushNamed(context, AppRouter.myPrices);
+                          },
+                        );
+                      default:
+                        return StreamBuilder<
+                          QuerySnapshot<Map<String, dynamic>>
+                        >(
+                          stream: uid != null
+                              ? FirebaseFirestore.instance
+                                    .collection('notifications')
+                                    .where('uid', isEqualTo: uid)
+                                    .where('readStatus', isEqualTo: false)
+                                    .snapshots()
+                              : const Stream.empty(),
+                          builder: (context, snapshot) {
+                            final unreadCount = snapshot.data?.docs.length ?? 0;
+                            return _buildDashboardCard(
+                              context,
+                              'Notifications',
+                              Icons.notifications_active_outlined,
+                              Colors.red,
+                              () => _openNotifications(context),
+                              badgeCount: unreadCount,
+                            );
+                          },
+                        );
+                    }
                   },
-                ),
-                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: uid != null
-                      ? FirebaseFirestore.instance
-                            .collection('notifications')
-                            .where('uid', isEqualTo: uid)
-                            .where('readStatus', isEqualTo: false)
-                            .snapshots()
-                      : const Stream.empty(),
-                  builder: (context, snapshot) {
-                    final unreadCount = snapshot.data?.docs.length ?? 0;
-                    return _buildDashboardCard(
-                      context,
-                      'Notifications',
-                      Icons.notifications_active_outlined,
-                      Colors.red,
-                      () => _openNotifications(context),
-                      badgeCount: unreadCount,
-                    );
-                  },
-                ),
-              ],
+                );
+              },
             ),
             const SizedBox(height: 16),
-
-            // Large Profile Card
-            _buildProfileCard(
-              context,
-              theme,
-              () => _showProfileDialog(context, name, userData),
-            ),
           ],
         ),
       ),
@@ -218,67 +231,66 @@ class CooperativeDashboard extends StatelessWidget {
     VoidCallback onTap, {
     int badgeCount = 0,
   }) {
-    return SizedBox.expand(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+    return Stack(
+      children: [
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: double.infinity,
+              height: double.infinity,
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: color.withAlpha(25),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: color, size: 32),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(16),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: color.withAlpha(25),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(icon, color: color, size: 32),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      title,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
+          ),
+        ),
+        if (badgeCount > 0)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '$badgeCount',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
           ),
-          if (badgeCount > 0)
-            Positioned(
-              top: 12,
-              right: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '$badgeCount',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -299,29 +311,5 @@ class CooperativeDashboard extends StatelessWidget {
     if (context.mounted) {
       Navigator.pushNamed(context, AppRouter.notifications);
     }
-  }
-
-  Widget _buildProfileCard(
-    BuildContext context,
-    ThemeData theme,
-    VoidCallback onTap,
-  ) {
-    return Card(
-      elevation: 2,
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        leading: CircleAvatar(
-          backgroundColor: theme.primaryColor.withAlpha(30),
-          child: const Icon(Icons.person, color: Color(0xFF2E7D32)),
-        ),
-        title: const Text(
-          'My Profile',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: const Text('Account & Office Settings'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
-      ),
-    );
   }
 }

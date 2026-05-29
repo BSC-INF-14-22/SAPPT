@@ -26,7 +26,7 @@ class AdminDashboard extends StatelessWidget {
             onPressed: () async {
               await AuthService().signOut();
               if (context.mounted) {
-                Navigator.of(context).pushReplacementNamed(AppRouter.home);
+                Navigator.of(context).pushReplacementNamed(AppRouter.landing);
               }
             },
             icon: const Icon(Icons.logout),

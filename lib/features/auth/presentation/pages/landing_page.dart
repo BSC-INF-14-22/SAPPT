@@ -1,17 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:smart_agri_price_tracker/core/routing/app_router.dart';
+import 'package:smart_agri_price_tracker/core/services/language_service.dart';
 import 'package:smart_agri_price_tracker/core/theme/app_theme.dart';
 
 class LandingPage extends StatelessWidget {
   const LandingPage({super.key});
 
+  Future<void> _chooseLanguage(
+    BuildContext context,
+    AppLanguage language,
+  ) async {
+    await LanguageService.setLanguage(language);
+    if (context.mounted) {
+      Navigator.of(context).pushReplacementNamed(AppRouter.login);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -19,97 +32,138 @@ class LandingPage extends StatelessWidget {
               child: ConstrainedBox(
                 constraints: BoxConstraints(minHeight: constraints.maxHeight),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 24,
+                  ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Top Section: Logo and App Name
                       Column(
                         children: [
-                          const SizedBox(height: 40),
-                          Container(
-                            padding: const EdgeInsets.all(20),
+                          const SizedBox(height: 36),
+                          DecoratedBox(
                             decoration: BoxDecoration(
-                              color: AppColors.primaryGreen.withAlpha(20),
-                              shape: BoxShape.circle,
+                              borderRadius: BorderRadius.circular(28),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  colorScheme.primary.withAlpha(32),
+                                  colorScheme.secondary.withAlpha(38),
+                                ],
+                              ),
                             ),
-                            child: const Icon(
-                              Icons.agriculture_rounded,
-                              size: 80,
-                              color: AppColors.primaryGreen,
+                            child: Padding(
+                              padding: const EdgeInsets.all(28),
+                              child: Icon(
+                                Icons.agriculture_rounded,
+                                size: 78,
+                                color: colorScheme.primary,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 24),
                           Text(
-                            'Smart Agricultural\nPrice Tracker',
+                            'SAPPT',
                             textAlign: TextAlign.center,
                             style: textTheme.headlineLarge?.copyWith(
                               fontWeight: FontWeight.bold,
-                              color: AppColors.primaryGreen,
-                              height: 1.2,
+                              color: colorScheme.primary,
+                              letterSpacing: 1.2,
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 8),
                           Text(
-                            'Real-time crop prices for every farmer',
+                            'Smart Agricultural Price Tracker',
                             textAlign: TextAlign.center,
-                            style: textTheme.bodyLarge?.copyWith(
-                              color: AppColors.textSecondary,
-                              letterSpacing: 0.5,
+                            style: textTheme.titleMedium?.copyWith(
+                              color: isDark
+                                  ? Colors.white70
+                                  : AppColors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Track crop prices in the language you know best.',
+                            textAlign: TextAlign.center,
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: isDark
+                                  ? Colors.white60
+                                  : AppColors.textSecondary,
                             ),
                           ),
                         ],
                       ),
-
-                      // Middle Section: Optional Illustration or decorative element
-                      // (Leaving space for a clean modern look)
                       const SizedBox(height: 40),
-
-                      // Bottom Section: Actions
                       Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Login Button
-                          ElevatedButton(
-                            onPressed: () {
-                              Navigator.of(context).pushNamed(AppRouter.login);
-                            },
-                            child: const Text('Login'),
-                          ),
-                          const SizedBox(height: 16),
-                          // Register Button
-                          OutlinedButton(
-                            onPressed: () {
-                              Navigator.of(context).pushNamed(AppRouter.register);
-                            },
-                            child: const Text('Register'),
-                          ),
-                          const SizedBox(height: 16),
-                          // Continue as Guest
-                          TextButton(
-                            onPressed: () {
-                              Navigator.of(context).pushNamed(AppRouter.home);
-                            },
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Continue as Guest',
-                                  style: TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Icon(
-                                  Icons.arrow_forward_rounded,
-                                  size: 16,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ],
+                          Text(
+                            'Choose your language',
+                            textAlign: TextAlign.center,
+                            style: textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.onSurface,
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Sankhani chiyankhulo chanu',
+                            textAlign: TextAlign.center,
+                            style: textTheme.bodyLarge?.copyWith(
+                              color: isDark
+                                  ? Colors.white70
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          ValueListenableBuilder<AppLanguage>(
+                            valueListenable: LanguageService.languageNotifier,
+                            builder: (context, selectedLanguage, _) {
+                              return Column(
+                                children: [
+                                  _LanguageOption(
+                                    title: 'English',
+                                    subtitle: 'Continue in English',
+                                    icon: Icons.language,
+                                    isSelected:
+                                        selectedLanguage == AppLanguage.english,
+                                    onTap: () => _chooseLanguage(
+                                      context,
+                                      AppLanguage.english,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _LanguageOption(
+                                    title: 'Chichewa',
+                                    subtitle: 'Pitilizani m\'Chichewa',
+                                    icon: Icons.translate,
+                                    isSelected:
+                                        selectedLanguage ==
+                                        AppLanguage.chichewa,
+                                    onTap: () => _chooseLanguage(
+                                      context,
+                                      AppLanguage.chichewa,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
                         ],
+                      ),
+                      const SizedBox(height: 40),
+                      Text(
+                        'Your selected language will be used from login onwards.',
+                        textAlign: TextAlign.center,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: isDark
+                              ? Colors.white60
+                              : AppColors.textSecondary,
+                        ),
                       ),
                     ],
                   ),
@@ -117,6 +171,89 @@ class LandingPage extends StatelessWidget {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+class _LanguageOption extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _LanguageOption({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      elevation: isSelected ? 4 : 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: isSelected ? colorScheme.primary : AppColors.divider,
+          width: isSelected ? 2 : 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withAlpha(24),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: colorScheme.primary),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: theme.brightness == Brightness.dark
+                            ? Colors.white70
+                            : Colors.grey[700],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                isSelected
+                    ? Icons.check_circle_rounded
+                    : Icons.chevron_right_rounded,
+                color: isSelected ? colorScheme.primary : null,
+              ),
+            ],
+          ),
         ),
       ),
     );

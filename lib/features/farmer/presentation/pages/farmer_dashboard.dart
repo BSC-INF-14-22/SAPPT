@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:smart_agri_price_tracker/core/services/auth_service.dart';
+import 'package:smart_agri_price_tracker/core/services/language_service.dart';
 import 'package:smart_agri_price_tracker/core/routing/app_router.dart';
 import 'package:smart_agri_price_tracker/features/shared/presentation/widgets/market_insights_card.dart';
 
@@ -14,25 +15,36 @@ class FarmerDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<AppLanguage>(
+      valueListenable: LanguageService.languageNotifier,
+      builder: (context, language, _) {
+        return _buildDashboard(context, language);
+      },
+    );
+  }
+
+  Widget _buildDashboard(BuildContext context, AppLanguage language) {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
-    final name = userData['fullName'] ?? 'Farmer';
-    final district = userData['district'] ?? 'Not Set';
-    final today = DateFormat('EEEE, d MMMM yyyy').format(DateTime.now());
+    final name = userData['fullName'] ?? _text(language, 'Farmer', 'Mlimi');
+    final district =
+        userData['district'] ??
+        _text(language, 'Not Set', 'Sizinakhazikitsidwe');
+    final today = _formatToday(language);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Farmer Dashboard'),
+        title: Text(_text(language, 'Farmer Dashboard', 'Dashboard ya Mlimi')),
         actions: [
           IconButton(
             onPressed: () async {
               await AuthService().signOut();
               if (context.mounted) {
-                Navigator.of(context).pushReplacementNamed(AppRouter.home);
+                Navigator.of(context).pushReplacementNamed(AppRouter.landing);
               }
             },
             icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
+            tooltip: _text(language, 'Logout', 'Tulukani'),
           ),
         ],
       ),
@@ -49,7 +61,7 @@ class FarmerDashboard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Welcome, $name',
+                      _text(language, 'Welcome, $name', 'Takulandirani, $name'),
                       style: textTheme.headlineMedium?.copyWith(
                         color: theme.primaryColor,
                         fontWeight: FontWeight.bold,
@@ -58,24 +70,34 @@ class FarmerDashboard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.location_on, size: 16, color: Colors.grey),
+                        const Icon(
+                          Icons.location_on,
+                          size: 16,
+                          color: Colors.grey,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           district,
-                          style: textTheme.bodyMedium?.copyWith(color: Colors.grey[700]),
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[700],
+                          ),
                         ),
                       ],
                     ),
                   ],
                 ),
                 GestureDetector(
-                  onTap: () => _showProfileDialog(context, name, userData),
+                  onTap: () =>
+                      _showProfileDialog(context, name, userData, language),
                   child: CircleAvatar(
                     radius: 24,
                     backgroundColor: theme.primaryColor.withAlpha(30),
                     child: Text(
                       name[0].toUpperCase(),
-                      style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: theme.primaryColor,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
@@ -87,11 +109,11 @@ class FarmerDashboard extends StatelessWidget {
               style: textTheme.labelMedium?.copyWith(color: Colors.grey),
             ),
             const SizedBox(height: 24),
-            
+
             // Statistical Market Insight
-            const MarketInsightsCard(),
+            MarketInsightsCard(language: language),
             const SizedBox(height: 24),
-            
+
             // Grid of Action Cards
             GridView.count(
               crossAxisCount: 2,
@@ -103,28 +125,28 @@ class FarmerDashboard extends StatelessWidget {
               children: [
                 _buildDashboardCard(
                   context,
-                  'View Prices',
+                  _text(language, 'View Prices', 'Onani Mitengo'),
                   Icons.monetization_on_outlined,
                   Colors.green,
                   () => Navigator.pushNamed(context, AppRouter.marketPrices),
                 ),
                 _buildDashboardCard(
                   context,
-                  'Search Crops',
+                  _text(language, 'Search Crops', 'Sakani Mbewu'),
                   Icons.search_rounded,
                   Colors.blue,
                   () => Navigator.pushNamed(context, AppRouter.searchPrices),
                 ),
                 _buildDashboardCard(
                   context,
-                  'Price Trends',
+                  _text(language, 'Price Trends', 'Kusintha kwa Mitengo'),
                   Icons.trending_up_rounded,
                   Colors.orange,
                   () => Navigator.pushNamed(context, AppRouter.priceTrends),
                 ),
                 _buildDashboardCard(
                   context,
-                  'Notifications',
+                  _text(language, 'Notifications', 'Zidziwitso'),
                   Icons.notifications_active_outlined,
                   Colors.red,
                   () => Navigator.pushNamed(context, AppRouter.notifications),
@@ -132,28 +154,33 @@ class FarmerDashboard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            
+
             // Large Profile Card
-            _buildProfileCard(context, theme, () => _showProfileDialog(context, name, userData)),
+            _buildProfileCard(
+              context,
+              theme,
+              language,
+              () => _showProfileDialog(context, name, userData, language),
+            ),
           ],
         ),
       ),
       bottomNavigationBar: NavigationBar(
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home, color: Color(0xFF2E7D32)),
-            label: 'Home',
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: const Icon(Icons.home, color: Color(0xFF2E7D32)),
+            label: _text(language, 'Home', 'Kunyumba'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.analytics_outlined),
-            selectedIcon: Icon(Icons.analytics, color: Color(0xFF2E7D32)),
-            label: 'Markets',
+            icon: const Icon(Icons.analytics_outlined),
+            selectedIcon: const Icon(Icons.analytics, color: Color(0xFF2E7D32)),
+            label: _text(language, 'Markets', 'Misika'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person, color: Color(0xFF2E7D32)),
-            label: 'Profile',
+            icon: const Icon(Icons.person_outline),
+            selectedIcon: const Icon(Icons.person, color: Color(0xFF2E7D32)),
+            label: _text(language, 'Profile', 'Mbiri'),
           ),
         ],
         selectedIndex: 0,
@@ -161,23 +188,34 @@ class FarmerDashboard extends StatelessWidget {
           if (index == 1) {
             Navigator.pushNamed(context, AppRouter.marketPrices);
           } else if (index == 2) {
-            _showProfileDialog(context, name, userData);
+            _showProfileDialog(context, name, userData, language);
           }
         },
       ),
     );
   }
 
-  void _showProfileDialog(BuildContext context, String name, Map<String, dynamic> userData) {
+  void _showProfileDialog(
+    BuildContext context,
+    String name,
+    Map<String, dynamic> userData,
+    AppLanguage language,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Farmer Profile'),
-        content: Text('Name: $name\nRole: Farmer\nDistrict: ${userData['district'] ?? 'Not Set'}\nEmail: ${userData['email'] ?? 'N/A'}'),
+        title: Text(_text(language, 'Farmer Profile', 'Mbiri ya Mlimi')),
+        content: Text(
+          _text(
+            language,
+            'Name: $name\nRole: Farmer\nDistrict: ${userData['district'] ?? 'Not Set'}\nEmail: ${userData['email'] ?? 'N/A'}',
+            'Dzina: $name\nUdindo: Mlimi\nBoma: ${userData['district'] ?? 'Sizinakhazikitsidwe'}\nImelo: ${userData['email'] ?? 'Palibe'}',
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text(_text(language, 'Close', 'Tsekani')),
           ),
         ],
       ),
@@ -185,9 +223,9 @@ class FarmerDashboard extends StatelessWidget {
   }
 
   Widget _buildDashboardCard(
-    BuildContext context, 
-    String title, 
-    IconData icon, 
+    BuildContext context,
+    String title,
+    IconData icon,
     Color color,
     VoidCallback onTap,
   ) {
@@ -213,7 +251,10 @@ class FarmerDashboard extends StatelessWidget {
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
               ),
             ],
           ),
@@ -222,7 +263,12 @@ class FarmerDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileCard(BuildContext context, ThemeData theme, VoidCallback onTap) {
+  Widget _buildProfileCard(
+    BuildContext context,
+    ThemeData theme,
+    AppLanguage language,
+    VoidCallback onTap,
+  ) {
     return Card(
       elevation: 2,
       child: ListTile(
@@ -231,11 +277,58 @@ class FarmerDashboard extends StatelessWidget {
           backgroundColor: theme.primaryColor.withAlpha(30),
           child: const Icon(Icons.person, color: Color(0xFF2E7D32)),
         ),
-        title: const Text('My Profile', style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: const Text('Manage your account settings'),
+        title: Text(
+          _text(language, 'My Profile', 'Mbiri Yanga'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          _text(
+            language,
+            'Manage your account settings',
+            'Sinthani zokonda za akaunti yanu',
+          ),
+        ),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
       ),
     );
+  }
+
+  String _text(AppLanguage language, String english, String chichewa) {
+    return language == AppLanguage.chichewa ? chichewa : english;
+  }
+
+  String _formatToday(AppLanguage language) {
+    final now = DateTime.now();
+    if (language != AppLanguage.chichewa) {
+      return DateFormat('EEEE, d MMMM yyyy').format(now);
+    }
+
+    const weekdays = [
+      'Lolemba',
+      'Lachiwiri',
+      'Lachitatu',
+      'Lachinayi',
+      'Lachisanu',
+      'Loweruka',
+      'Lamlungu',
+    ];
+    const months = [
+      'Januware',
+      'Febuluwale',
+      'Malichi',
+      'Epulo',
+      'Meyi',
+      'Juni',
+      'Julayi',
+      'Ogasiti',
+      'Seputembala',
+      'Okutobala',
+      'Novembala',
+      'Disembala',
+    ];
+
+    return '${weekdays[now.weekday - 1]}, ${now.day} '
+        '${months[now.month - 1]} ${now.year}';
   }
 }

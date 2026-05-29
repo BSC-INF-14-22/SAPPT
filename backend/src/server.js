@@ -153,5 +153,47 @@ server.on('error', (err) => {
   }
 });
 
+// ── Process-level error handlers to improve stability and logging
+// These catch crashes, log them, and exit so the platform (Railway)
+// can restart the process. They also make debugging easier by
+// ensuring stack traces appear in logs.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
+  // Graceful shutdown: stop accepting new connections then exit
+  try {
+    server.close(() => {
+      console.error('Server closed after unhandled rejection. Exiting.');
+      process.exit(1);
+    });
+    // Fallback in case server.close hangs
+    setTimeout(() => process.exit(1), 10000).unref();
+  } catch (err) {
+    console.error('Error during graceful shutdown:', err);
+    process.exit(1);
+  }
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('🚨 Uncaught Exception:', err && err.stack ? err.stack : err);
+  try {
+    server.close(() => {
+      console.error('Server closed after uncaught exception. Exiting.');
+      process.exit(1);
+    });
+    setTimeout(() => process.exit(1), 10000).unref();
+  } catch (e) {
+    console.error('Error during shutdown after uncaught exception:', e);
+    process.exit(1);
+  }
+});
+
+// ── Lightweight periodic health/log output to aid in diagnosing crashes
+// Logs memory usage and uptime every 10 minutes. Useful to detect leaks
+// or repeated restarts in the Railway logs.
+setInterval(() => {
+  const mem = process.memoryUsage();
+  console.log(`🩺 Health: uptime=${process.uptime().toFixed(0)}s rss=${Math.round(mem.rss/1024/1024)}MB heapUsed=${Math.round(mem.heapUsed/1024/1024)}MB`);
+}, 10 * 60 * 1000).unref();
+
 // Export the app (useful for testing with tools like Jest/Supertest)
 module.exports = app;
