@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -14,19 +16,77 @@ class PriceApprovalPage extends StatefulWidget {
 class _PriceApprovalPageState extends State<PriceApprovalPage> {
   final _reasonController = TextEditingController();
 
+  String _slugify(String value) {
+    final slug = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    return slug.isEmpty ? 'unknown' : slug;
+  }
+
   void _approvePrice(String docId, Map<String, dynamic> data) async {
     try {
+      final cropName = (data['cropName'] ?? data['productName'] ?? 'Unknown')
+          .toString()
+          .trim();
+      final unit = (data['unit'] ?? 'kg').toString().trim();
+      final marketName = (data['market'] ?? data['marketName'] ?? 'Local Market')
+          .toString()
+          .trim();
+      final district = (data['district'] ?? '').toString().trim();
+      final productId = _slugify(cropName);
+      final marketId = (data['marketId'] ?? _slugify('$marketName $district'))
+          .toString()
+          .trim();
+
+      await FirebaseFirestore.instance.collection('products').doc(productId).set({
+        'name': cropName,
+        'cropName': cropName,
+        'unit': unit,
+        'measurementUnit': unit,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await FirebaseFirestore.instance.collection('commodities').doc(productId).set({
+        'name': cropName,
+        'cropName': cropName,
+        'unit': unit,
+        'measurementUnit': unit,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await FirebaseFirestore.instance.collection('markets').doc(marketId).set({
+        'name': marketName,
+        'marketName': marketName,
+        'district': district,
+        'region': district,
+        'location': district.isEmpty ? marketName : district,
+        'isActive': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
       await FirestoreService().updateData('prices', docId, {
         'status': 'approved',
+        'cropName': cropName,
+        'productName': cropName,
+        'unit': unit,
+        'market': marketName,
+        'marketName': marketName,
+        'marketId': marketId,
+        'district': district,
+        'sourceType': data['sourceType'] ?? 'manual',
+        'submittedAt': data['submittedAt'] ?? FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      
+
       // 1. Notify the Cooperative Officer that their price was approved
       if (data['uploadedBy'] != null) {
         await NotificationService().sendInAppNotification(
           uid: data['uploadedBy'],
           title: 'Price Approved ✅',
-          message: 'Your submitted price for ${data['cropName']} has been approved and is now live.',
+          message:
+              'Your submitted price for $cropName has been approved and is now live.',
         );
       }
 
@@ -34,20 +94,22 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
       await NotificationService().sendRoleBroadcast(
         role: 'Farmer',
         title: 'New Market Prices 📈',
-        message: 'New verified prices for ${data['cropName']} are now available in the market.',
+        message:
+            'New verified prices for $cropName are now available in the market.',
       );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Price approved successfully.'), backgroundColor: Colors.green),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Price approved successfully.'),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -60,7 +122,9 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Please provide a reason for rejecting this price entry:'),
+            const Text(
+              'Please provide a reason for rejecting this price entry:',
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: _reasonController,
@@ -73,12 +137,17 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
             onPressed: () async {
               if (_reasonController.text.trim().isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Reason is required for rejection.')),
+                  const SnackBar(
+                    content: Text('Reason is required for rejection.'),
+                  ),
                 );
                 return;
               }
@@ -89,30 +158,38 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
                   'rejectionReason': _reasonController.text.trim(),
                   'updatedAt': FieldValue.serverTimestamp(),
                 });
-                
+
                 // Notify the Cooperative Officer about the rejection
                 if (data['uploadedBy'] != null) {
                   await NotificationService().sendInAppNotification(
                     uid: data['uploadedBy'],
                     title: 'Price Rejected ❌',
-                    message: 'Your price for ${data['cropName']} was rejected. Reason: ${_reasonController.text.trim()}',
+                    message:
+                        'Your price for ${data['cropName']} was rejected. Reason: ${_reasonController.text.trim()}',
                   );
                 }
 
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Price rejected.'), backgroundColor: Colors.red),
-                  );
-                }
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Price rejected.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-                  );
-                }
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Reject'),
           ),
         ],
@@ -123,11 +200,13 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Price Approvals'),
-      ),
+      appBar: AppBar(title: const Text('Price Approvals')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirestoreService().getFilteredCollectionStream('prices', 'status', 'pending'),
+        stream: FirestoreService().getFilteredCollectionStream(
+          'prices',
+          'status',
+          'pending',
+        ),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -144,7 +223,11 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.check_circle_outline, size: 64, color: Colors.grey[300]),
+                  Icon(
+                    Icons.check_circle_outline,
+                    size: 64,
+                    color: Colors.grey[300],
+                  ),
                   const SizedBox(height: 16),
                   const Text('All caught up! No pending prices.'),
                 ],
@@ -173,10 +256,12 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
     final market = data['market'] ?? 'Local Market';
     final district = data['district'] ?? 'Not Specified';
     final notes = data['notes'] ?? '';
-    
+
     String formattedDate = 'Recent';
     if (data['updatedAt'] != null && data['updatedAt'] is Timestamp) {
-      formattedDate = DateFormat('MMM d, yyyy HH:mm').format((data['updatedAt'] as Timestamp).toDate());
+      formattedDate = DateFormat(
+        'MMM d, yyyy HH:mm',
+      ).format((data['updatedAt'] as Timestamp).toDate());
     }
 
     return Card(
@@ -191,7 +276,9 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
               children: [
                 Text(
                   cropName,
-                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 Text(
                   'MK $price / $unit',
@@ -216,7 +303,10 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
               children: [
                 const Icon(Icons.access_time, size: 16, color: Colors.grey),
                 const SizedBox(width: 8),
-                Text('Submitted: $formattedDate', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(
+                  'Submitted: $formattedDate',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
               ],
             ),
             if (notes.isNotEmpty) ...[
@@ -230,9 +320,15 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                    const Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: Colors.blue,
+                    ),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(notes, style: const TextStyle(fontSize: 13))),
+                    Expanded(
+                      child: Text(notes, style: const TextStyle(fontSize: 13)),
+                    ),
                   ],
                 ),
               ),
@@ -244,7 +340,10 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
                   child: OutlinedButton.icon(
                     onPressed: () => _rejectPrice(docId, data),
                     icon: const Icon(Icons.close, color: Colors.red),
-                    label: const Text('Reject', style: TextStyle(color: Colors.red)),
+                    label: const Text(
+                      'Reject',
+                      style: TextStyle(color: Colors.red),
+                    ),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.red),
                     ),

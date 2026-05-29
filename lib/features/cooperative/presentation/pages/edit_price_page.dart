@@ -17,7 +17,7 @@ class EditPricePage extends StatefulWidget {
 }
 
 class _EditPricePageState extends State<EditPricePage> {
-  final _formKey = GlobalKey<FormState>();
+  final _editPriceFormKey = GlobalKey<FormState>();
   late TextEditingController _marketController;
   late TextEditingController _priceController;
   late TextEditingController _notesController;
@@ -46,6 +46,15 @@ class _EditPricePageState extends State<EditPricePage> {
     'Mulanje',
   ];
 
+  String _slugify(String value) {
+    final slug = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    return slug.isEmpty ? 'unknown' : slug;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -60,23 +69,57 @@ class _EditPricePageState extends State<EditPricePage> {
   }
 
   Future<void> _handleUpdate() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_editPriceFormKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
+      final marketName = _marketController.text.trim();
+      final marketId = _slugify('$marketName $_selectedDistrict');
+
       final updatedData = {
         'cropName': _selectedCrop,
+        'productName': _selectedCrop,
         'price': _priceController.text.trim(),
         'unit': _selectedUnit,
-        'market': _marketController.text.trim(),
+        'market': marketName,
+        'marketName': marketName,
+        'marketId': marketId,
         'district': _selectedDistrict,
         'notes': _notesController.text.trim(),
         // Reset status to pending if it was approved?
         // User didn't specify, but usually edits require re-approval.
         'status': 'pending',
+        'sourceType': 'manual',
         'updatedAt': FieldValue.serverTimestamp(),
       };
+
+      final productId = _slugify(_selectedCrop);
+      await FirebaseFirestore.instance.collection('products').doc(productId).set({
+        'name': _selectedCrop,
+        'cropName': _selectedCrop,
+        'unit': _selectedUnit,
+        'measurementUnit': _selectedUnit,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await FirebaseFirestore.instance.collection('commodities').doc(productId).set({
+        'name': _selectedCrop,
+        'cropName': _selectedCrop,
+        'unit': _selectedUnit,
+        'measurementUnit': _selectedUnit,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await FirebaseFirestore.instance.collection('markets').doc(marketId).set({
+        'name': marketName,
+        'marketName': marketName,
+        'district': _selectedDistrict,
+        'region': _selectedDistrict,
+        'location': _selectedDistrict,
+        'isActive': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
       await FirestoreService().updateData('prices', widget.docId, updatedData);
 
@@ -105,14 +148,14 @@ class _EditPricePageState extends State<EditPricePage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    // final theme = Theme.of(context); // unused
 
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Price Entry')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Form(
-          key: _formKey,
+          key: _editPriceFormKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
