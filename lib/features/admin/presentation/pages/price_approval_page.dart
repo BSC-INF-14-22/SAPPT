@@ -31,30 +31,37 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
           .toString()
           .trim();
       final unit = (data['unit'] ?? 'kg').toString().trim();
-      final marketName = (data['market'] ?? data['marketName'] ?? 'Local Market')
-          .toString()
-          .trim();
+      final marketName =
+          (data['market'] ?? data['marketName'] ?? 'Local Market')
+              .toString()
+              .trim();
       final district = (data['district'] ?? '').toString().trim();
       final productId = _slugify(cropName);
       final marketId = (data['marketId'] ?? _slugify('$marketName $district'))
           .toString()
           .trim();
 
-      await FirebaseFirestore.instance.collection('products').doc(productId).set({
-        'name': cropName,
-        'cropName': cropName,
-        'unit': unit,
-        'measurementUnit': unit,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await FirebaseFirestore.instance
+          .collection('products')
+          .doc(productId)
+          .set({
+            'name': cropName,
+            'cropName': cropName,
+            'unit': unit,
+            'measurementUnit': unit,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
 
-      await FirebaseFirestore.instance.collection('commodities').doc(productId).set({
-        'name': cropName,
-        'cropName': cropName,
-        'unit': unit,
-        'measurementUnit': unit,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await FirebaseFirestore.instance
+          .collection('commodities')
+          .doc(productId)
+          .set({
+            'name': cropName,
+            'cropName': cropName,
+            'unit': unit,
+            'measurementUnit': unit,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
 
       await FirebaseFirestore.instance.collection('markets').doc(marketId).set({
         'name': marketName,
@@ -79,6 +86,12 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
         'submittedAt': data['submittedAt'] ?? FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      await _notifyFarmersIfBestMarketChanges(
+        cropName: cropName,
+        productId: productId,
+        unit: unit,
+      );
 
       // 1. Notify the Cooperative Officer that their price was approved
       if (data['uploadedBy'] != null) {
@@ -109,6 +122,70 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _notifyFarmersIfBestMarketChanges({
+    required String cropName,
+    required String productId,
+    required String unit,
+  }) async {
+    final prices = await FirebaseFirestore.instance
+        .collection('prices')
+        .where('status', isEqualTo: 'approved')
+        .where('productName', isEqualTo: cropName)
+        .get();
+
+    if (prices.docs.isEmpty) return;
+
+    QueryDocumentSnapshot<Map<String, dynamic>>? bestDoc;
+    double bestPrice = 0;
+
+    for (final doc in prices.docs) {
+      final price = double.tryParse(doc.data()['price'].toString()) ?? 0;
+      if (price > bestPrice) {
+        bestPrice = price;
+        bestDoc = doc;
+      }
+    }
+
+    if (bestDoc == null) return;
+
+    final bestData = bestDoc.data();
+    final bestMarket = (bestData['market'] ?? bestData['marketName'] ?? '')
+        .toString()
+        .trim();
+    final bestDistrict = (bestData['district'] ?? '').toString().trim();
+    final bestMarketId =
+        (bestData['marketId'] ?? _slugify('$bestMarket $bestDistrict'))
+            .toString()
+            .trim();
+    final alertRef = FirebaseFirestore.instance
+        .collection('market_alerts')
+        .doc(productId);
+    final previous = await alertRef.get();
+    final previousMarketId = previous.data()?['bestMarketId'];
+
+    await alertRef.set({
+      'cropName': cropName,
+      'bestMarketId': bestMarketId,
+      'bestMarket': bestMarket,
+      'bestDistrict': bestDistrict,
+      'bestPrice': bestPrice,
+      'unit': unit,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (previous.exists && previousMarketId != bestMarketId) {
+      final location = bestDistrict.isEmpty
+          ? bestMarket
+          : '$bestMarket, $bestDistrict';
+      await NotificationService().sendRoleBroadcast(
+        role: 'Farmer',
+        title: 'Best Market Changed',
+        message:
+            '$cropName is now strongest at $location: MK ${bestPrice.toStringAsFixed(0)}/$unit.',
       );
     }
   }
