@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed:may16-prices": "node ./scripts/seedMay16Prices.js",
-    "backfill:phone-login": "node ./scripts/backfillPhoneLoginIndex.js"
+    "backfill:phone-login": "node ./scripts/backfillPhoneLoginIndex.js",
+    "backfill:price-cooperatives": "node ./scripts/backfillPriceCooperativeNames.js"
   },
   "dependencies": {
     "csv-parse": "^5.5.5",

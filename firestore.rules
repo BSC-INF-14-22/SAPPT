@@ -106,8 +106,28 @@ service cloud.firestore {
       // Any signed-in user can read the list of available products
       allow read: if isSignedIn();
       // Cooperative Officers can add new products (auto-added during price upload)
-      allow create: if isCooperative();
+      allow create, update: if isCooperative();
       // Cooperative Officers can delete products when removing a price entry
+      allow delete: if isCooperative();
+    }
+
+    // ==========================================
+    // COMMODITIES COLLECTION
+    // ==========================================
+
+    match /commodities/{commodityId} {
+      allow read: if isSignedIn();
+      allow create, update: if isCooperative();
+      allow delete: if isCooperative();
+    }
+
+    // ==========================================
+    // MARKETS COLLECTION
+    // ==========================================
+
+    match /markets/{marketId} {
+      allow read: if isSignedIn();
+      allow create, update: if isCooperative();
       allow delete: if isCooperative();
     }
 

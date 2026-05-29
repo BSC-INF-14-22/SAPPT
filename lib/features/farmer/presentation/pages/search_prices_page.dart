@@ -328,7 +328,19 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
               'Updated: $formattedDate',
               style: const TextStyle(fontSize: 12),
             ),
-            if (data['uploadedBy'] != null)
+            if (_cooperativeNameFromPrice(data) != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text(
+                  'By: ${_cooperativeNameFromPrice(data)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: theme.primaryColor,
+                  ),
+                ),
+              )
+            else if (data['uploadedBy'] != null)
               FutureBuilder<Map<String, dynamic>?>(
                 future: FirestoreService().getUserByUid(data['uploadedBy']),
                 builder: (context, userSnapshot) {
@@ -375,6 +387,16 @@ class _SearchPricesPageState extends State<SearchPricesPage> {
         ),
       ),
     );
+  }
+
+  String? _cooperativeNameFromPrice(Map<String, dynamic> price) {
+    final value = price['cooperativeName'] ??
+        price['uploadedByName'] ??
+        price['cooperativeOfficerName'];
+    if (value == null) return null;
+
+    final name = value.toString().trim();
+    return name.isEmpty ? null : name;
   }
 
   @override

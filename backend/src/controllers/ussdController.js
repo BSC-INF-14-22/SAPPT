@@ -1,8 +1,17 @@
 const { db } = require('../config/firebase');
 
-const DEFAULT_PRODUCTS = ['Maize', 'Soybean', 'Groundnuts', 'Wheat', 'Rice'];
+const CURRENCY = 'MWK';
 const DEFAULT_UNIT = 'kg';
-const CURRENCY = 'MK';
+const RANGE_PERCENT = 0.30;
+
+const PRODUCTS = [
+  { label: 'Maize', aliases: ['maize', 'corn'] },
+  { label: 'Rice', aliases: ['rice', 'rice-polished', 'rice-unpolished'] },
+  { label: 'Beans', aliases: ['beans', 'bean', 'cowpeas', 'cow peas'] },
+  { label: 'Groundnuts', aliases: ['groundnuts', 'groundnut', 'peanuts', 'peanut'] },
+];
+
+const MARKETS = ['Zomba', 'Lilongwe', 'Blantyre', 'Mzuzu'];
 
 const toText = (value, fallback = '') => (
   value === undefined || value === null ? fallback : String(value).trim()
@@ -13,6 +22,12 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const normalize = (value) => toText(value)
+  .toLowerCase()
+  .replace(/[_/]+/g, '-')
+  .replace(/\s*-\s*/g, '-')
+  .replace(/\s+/g, ' ');
+
 const toMillis = (value) => {
   if (!value) return 0;
   if (typeof value.toMillis === 'function') return value.toMillis();
@@ -21,323 +36,170 @@ const toMillis = (value) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-const slugify = (value) => toText(value, 'unknown')
-  .toLowerCase()
-  .replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-|-$/g, '') || 'unknown';
-
-const normalizePrice = (doc) => {
-  const data = typeof doc.data === 'function' ? doc.data() : doc;
-  const productName = toText(data.productName || data.cropName || data.name, 'Unknown');
-  const marketName = toText(data.marketName || data.market || data.marketId, 'Unknown market');
-  const district = toText(data.district || data.region || data.location);
-  const unit = toText(data.unit || data.measurementUnit || data.measurement, DEFAULT_UNIT);
-  const updatedAt = data.submittedAt || data.updatedAt || data.createdAt || data.publishedAt;
-
-  return {
-    id: doc.id,
-    ...data,
-    productName,
-    cropName: productName,
-    price: toNumber(data.price),
-    unit,
-    marketId: toText(data.marketId) || slugify(`${marketName}-${district}`),
-    marketName,
-    market: marketName,
-    district,
-    updatedAt,
-    sortTime: toMillis(updatedAt),
-  };
-};
-
-const isVisiblePrice = (price) => {
-  const status = toText(price.status).toLowerCase();
-  return price.price !== null && (!status || status === 'approved' || status === 'verified');
-};
-
-const getRecentPrices = async (limit = 100) => {
-  const snapshot = await db.collection('prices').limit(limit).get();
-  return snapshot.docs
-    .map(normalizePrice)
-    .filter(isVisiblePrice)
-    .sort((a, b) => b.sortTime - a.sortTime);
-};
-
-const fetchProducts = async () => {
-  const readCollection = async (collectionName) => {
-    try {
-      const snapshot = await db.collection(collectionName).limit(20).get();
-      return snapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .map((item) => ({
-          name: toText(item.name || item.cropName || item.productName),
-          unit: toText(item.unit || item.measurementUnit || item.measurement, DEFAULT_UNIT),
-        }))
-        .filter((item) => item.name);
-    } catch (err) {
-      console.error(`Firestore fetch ${collectionName} error:`, err.message);
-      return [];
-    }
-  };
-
-  const products = await readCollection('products');
-  if (products.length > 0) return products;
-
-  const commodities = await readCollection('commodities');
-  if (commodities.length > 0) return commodities;
-
-  return DEFAULT_PRODUCTS.map((name) => ({ name, unit: DEFAULT_UNIT }));
-};
-
-const fetchLatestPriceForProduct = async (productName) => {
-  const prices = await getRecentPrices(150);
-  return prices.find(
-    (price) => price.productName.toLowerCase() === productName.toLowerCase()
-  ) || null;
-};
-
-const fetchLatestPrices = async () => {
-  const prices = await getRecentPrices(100);
-  return prices.slice(0, 5);
-};
-
-const fetchMarkets = async () => {
-  try {
-    const snapshot = await db.collection('markets').limit(20).get();
-    const markets = snapshot.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }))
-      .filter((market) => market.isActive !== false)
-      .map((market) => ({
-        id: market.id,
-        name: toText(market.name || market.market || market.marketName, 'Unknown market'),
-        district: toText(market.district || market.region || market.location),
-      }))
-      .filter((market) => market.name !== 'Unknown market')
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    if (markets.length > 0) return markets.slice(0, 5);
-  } catch (err) {
-    console.error('Firestore fetchMarkets error:', err.message);
-  }
-
-  const prices = await getRecentPrices(150);
-  const byMarket = new Map();
-
-  for (const price of prices) {
-    const key = price.marketId || slugify(`${price.marketName}-${price.district}`);
-    if (!byMarket.has(key)) {
-      byMarket.set(key, {
-        id: key,
-        name: price.marketName,
-        district: price.district,
-      });
-    }
-  }
-
-  return [...byMarket.values()]
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .slice(0, 5);
-};
-
-const fetchPricesForMarket = async (market) => {
-  const prices = await getRecentPrices(150);
-  return prices
-    .filter((price) => (
-      price.marketId === market.id
-      || price.marketName.toLowerCase() === market.name.toLowerCase()
-      || slugify(`${price.marketName}-${price.district}`) === market.id
-    ))
-    .slice(0, 3);
-};
-
-const fetchCooperativePrices = async (productName) => {
-  const prices = await getRecentPrices(150);
-  return prices
-    .filter((price) => price.productName.toLowerCase() === productName.toLowerCase())
-    .filter((price) => price.sourceType === 'manual' || price.uploadedBy || price.source === 'backend-seed')
-    .map((price) => price.price)
-    .filter((price) => price !== null);
-};
+const roundToNearest10 = (value) => Math.round(value / 10) * 10;
 
 const mainMenu = () => (
-  'CON Welcome to SAPPT Market Prices\n' +
-  'Select an option:\n' +
+  'CON Welcome to SAPPT\n' +
   '1. View Prices\n' +
-  '2. Select Commodity\n' +
-  '3. Select Market\n' +
-  '4. Exit\n' +
-  '5. Estimate Selling Price'
+  '2. Exit'
 );
 
-const formatPriceLine = (price) => (
-  `${price.productName}: ${CURRENCY}${price.price}/${price.unit}`
+const productMenu = () => (
+  'CON Select Product Category\n' +
+  PRODUCTS.map((product, index) => `${index + 1}. ${product.label}`).join('\n') +
+  '\n5. Back'
 );
 
-const formatMarketName = (market) => (
-  market.district ? `${market.name}, ${market.district}` : market.name
+const marketMenu = () => (
+  'CON Select Market\n' +
+  MARKETS.map((market, index) => `${index + 1}. ${market}`).join('\n') +
+  '\n5. Back'
 );
+
+const exitMessage = () => 'END Thank you for using SAPPT.';
+
+const isVisiblePrice = (data) => {
+  const price = toNumber(data.price);
+  const status = normalize(data.status);
+  return price !== null && price > 0 && (!status || status === 'approved' || status === 'verified');
+};
+
+const productMatches = (priceProductName, product) => {
+  const normalizedPriceProduct = normalize(priceProductName);
+  return product.aliases.some((alias) => {
+    const normalizedAlias = normalize(alias);
+    return normalizedPriceProduct === normalizedAlias
+      || normalizedPriceProduct.startsWith(`${normalizedAlias}-`)
+      || normalizedPriceProduct.startsWith(`${normalizedAlias} `);
+  });
+};
+
+const districtMatches = (priceDistrict, market) => (
+  normalize(priceDistrict) === normalize(market)
+);
+
+const fetchAverageSellingPrice = async (product, market) => {
+  const snapshot = await db
+    .collection('prices')
+    .where('status', '==', 'approved')
+    .limit(500)
+    .get();
+
+  const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+  const matchingPrices = snapshot.docs
+    .map((doc) => doc.data())
+    .filter(isVisiblePrice)
+    .filter((data) => productMatches(data.cropName || data.productName || data.name, product))
+    .filter((data) => districtMatches(data.district || data.region || data.location, market))
+    .map((data) => ({
+      price: toNumber(data.price),
+      unit: toText(data.unit || data.measurementUnit || data.measurement, DEFAULT_UNIT),
+      sortTime: toMillis(data.submittedAt || data.updatedAt || data.createdAt),
+    }))
+    .filter((item) => item.price !== null);
+
+  const recentPrices = matchingPrices.filter((item) => item.sortTime >= thirtyDaysAgo);
+  const prices = recentPrices.length > 0 ? recentPrices : matchingPrices;
+
+  if (prices.length === 0) return null;
+
+  const average = prices.reduce((sum, item) => sum + item.price, 0) / prices.length;
+  const unit = prices[0].unit || DEFAULT_UNIT;
+  const halfRange = RANGE_PERCENT / 2;
+
+  return {
+    unit,
+    average,
+    min: roundToNearest10(average * (1 - halfRange)),
+    max: roundToNearest10(average * (1 + halfRange)),
+  };
+};
+
+const priceResultMenu = async (product, market) => {
+  const range = await fetchAverageSellingPrice(product, market);
+
+  if (!range) {
+    return (
+      `CON ${product.label} prices in ${market}:\n` +
+      'No approved prices found.\n' +
+      '1. Back\n' +
+      '2. Exit'
+    );
+  }
+
+  return (
+    `CON ${product.label} prices in ${market}:\n` +
+    `${CURRENCY} ${range.min} to ${range.max} per ${range.unit}\n` +
+    '1. Back\n' +
+    '2. Exit'
+  );
+};
+
+const parseSelection = (value, max) => {
+  const index = parseInt(value, 10) - 1;
+  if (Number.isNaN(index) || index < 0 || index >= max) return null;
+  return index;
+};
 
 const handleUSSD = async (req, res) => {
   const { sessionId = 'unknown', phoneNumber = 'unknown', text = '' } = req.body;
-
   console.log(`USSD | Session: ${sessionId} | Phone: ${phoneNumber} | Input: "${text}"`);
 
-  const userInputs = text.split('*');
-  const level1 = userInputs[0];
-  const level2 = userInputs[1];
+  const inputs = text.split('*').filter((item) => item !== '');
+  const [menuChoice, productChoice, marketChoice, resultChoice] = inputs;
 
-  if (text === '') {
+  if (inputs.length === 0) {
     return res.type('text/plain').send(mainMenu());
   }
 
-  if (level1 === '1') {
-    const prices = await fetchLatestPrices();
-
-    if (prices.length === 0) {
-      return res.type('text/plain').send('END No approved price data available.\nPlease check back later.');
-    }
-
-    return res.type('text/plain').send(
-      'END Latest Prices:\n' +
-      prices.map(formatPriceLine).join('\n') +
-      '\nSource: SAPPT'
-    );
+  if (menuChoice === '2') {
+    return res.type('text/plain').send(exitMessage());
   }
 
-  if (level1 === '2' && !level2) {
-    const products = await fetchProducts();
-    req.app.locals[`products:${sessionId}`] = products;
-
-    return res.type('text/plain').send(
-      'CON Select a commodity:\n' +
-      products.map((item, index) => `${index + 1}. ${item.name}`).join('\n') +
-      '\n0. Back'
-    );
+  if (menuChoice !== '1') {
+    return res.type('text/plain').send('END Invalid input. Please dial again.');
   }
 
-  if (level1 === '2' && level2) {
-    if (level2 === '0') return res.type('text/plain').send(mainMenu());
-
-    const products = req.app.locals[`products:${sessionId}`] || await fetchProducts();
-    const productIndex = parseInt(level2, 10) - 1;
-
-    if (Number.isNaN(productIndex) || productIndex < 0 || productIndex >= products.length) {
-      return res.type('text/plain').send('END Invalid selection. Please dial again.');
-    }
-
-    const selectedProduct = products[productIndex];
-    const priceData = await fetchLatestPriceForProduct(selectedProduct.name);
-
-    if (!priceData) {
-      return res.type('text/plain').send(
-        `END No price data found for ${selectedProduct.name}.\nPlease check back later.`
-      );
-    }
-
-    delete req.app.locals[`products:${sessionId}`];
-
-    return res.type('text/plain').send(
-      `END ${selectedProduct.name} Price:\n` +
-      `${CURRENCY} ${priceData.price} per ${priceData.unit || selectedProduct.unit}\n` +
-      `Market: ${priceData.marketName}\n` +
-      'Source: SAPPT'
-    );
+  if (!productChoice) {
+    return res.type('text/plain').send(productMenu());
   }
 
-  if (level1 === '3' && !level2) {
-    const markets = await fetchMarkets();
-
-    if (markets.length === 0) {
-      return res.type('text/plain').send('END No markets available at this time.');
-    }
-
-    req.app.locals[`markets:${sessionId}`] = markets;
-
-    return res.type('text/plain').send(
-      'CON Select a market:\n' +
-      markets.map((market, index) => `${index + 1}. ${formatMarketName(market)}`).join('\n') +
-      '\n0. Back'
-    );
+  if (productChoice === '5') {
+    return res.type('text/plain').send(mainMenu());
   }
 
-  if (level1 === '3' && level2) {
-    if (level2 === '0') return res.type('text/plain').send(mainMenu());
-
-    const markets = req.app.locals[`markets:${sessionId}`] || await fetchMarkets();
-    const marketIndex = parseInt(level2, 10) - 1;
-
-    if (Number.isNaN(marketIndex) || marketIndex < 0 || marketIndex >= markets.length) {
-      return res.type('text/plain').send('END Invalid market selection. Please dial again.');
-    }
-
-    const selectedMarket = markets[marketIndex];
-    const prices = await fetchPricesForMarket(selectedMarket);
-
-    if (prices.length === 0) {
-      return res.type('text/plain').send(
-        `END No prices found for\n${selectedMarket.name}.\nPlease check back later.`
-      );
-    }
-
-    delete req.app.locals[`markets:${sessionId}`];
-
-    return res.type('text/plain').send(
-      `END Prices at ${formatMarketName(selectedMarket)}:\n` +
-      prices.map(formatPriceLine).join('\n') +
-      '\nSource: SAPPT'
-    );
+  const productIndex = parseSelection(productChoice, PRODUCTS.length);
+  if (productIndex === null) {
+    return res.type('text/plain').send('END Invalid product. Please dial again.');
   }
 
-  if (level1 === '4') {
-    return res.type('text/plain').send(
-      'END Thank you for using SAPPT!\nHelping farmers get fair prices.'
-    );
+  const product = PRODUCTS[productIndex];
+
+  if (!marketChoice) {
+    return res.type('text/plain').send(marketMenu());
   }
 
-  if (level1 === '5' && !level2) {
-    const products = await fetchProducts();
-    req.app.locals[`products:${sessionId}`] = products;
-
-    return res.type('text/plain').send(
-      'CON Estimate selling price - select commodity:\n' +
-      products.map((item, index) => `${index + 1}. ${item.name}`).join('\n') +
-      '\n0. Back'
-    );
+  if (marketChoice === '5') {
+    return res.type('text/plain').send(productMenu());
   }
 
-  if (level1 === '5' && level2) {
-    if (level2 === '0') return res.type('text/plain').send(mainMenu());
+  const marketIndex = parseSelection(marketChoice, MARKETS.length);
+  if (marketIndex === null) {
+    return res.type('text/plain').send('END Invalid market. Please dial again.');
+  }
 
-    const products = req.app.locals[`products:${sessionId}`] || await fetchProducts();
-    const productIndex = parseInt(level2, 10) - 1;
+  const market = MARKETS[marketIndex];
 
-    if (Number.isNaN(productIndex) || productIndex < 0 || productIndex >= products.length) {
-      return res.type('text/plain').send('END Invalid selection. Please dial again.');
-    }
+  if (!resultChoice) {
+    return res.type('text/plain').send(await priceResultMenu(product, market));
+  }
 
-    const selectedProduct = products[productIndex];
-    const coopPrices = await fetchCooperativePrices(selectedProduct.name);
+  if (resultChoice === '1') {
+    return res.type('text/plain').send(marketMenu());
+  }
 
-    if (coopPrices.length === 0) {
-      return res.type('text/plain').send(
-        `END No cooperative price reports found for ${selectedProduct.name}.\nPlease check back later.`
-      );
-    }
-
-    coopPrices.sort((a, b) => a - b);
-    const min = coopPrices[0];
-    const max = coopPrices[coopPrices.length - 1];
-    const mean = coopPrices.reduce((sum, value) => sum + value, 0) / coopPrices.length;
-    const suggested = (mean * 1.05).toFixed(2);
-
-    delete req.app.locals[`products:${sessionId}`];
-
-    return res.type('text/plain').send(
-      `END Estimate for ${selectedProduct.name}:\n` +
-      `Suggested: ${CURRENCY} ${suggested}/${selectedProduct.unit || DEFAULT_UNIT}\n` +
-      `Range: ${min}-${max}\n` +
-      'Source: SAPPT'
-    );
+  if (resultChoice === '2') {
+    return res.type('text/plain').send(exitMessage());
   }
 
   return res.type('text/plain').send('END Invalid input. Please dial again.');

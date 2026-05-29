@@ -90,6 +90,12 @@ class _UploadPricePageState extends State<UploadPricePage> {
         throw Exception('You must be logged in to upload prices.');
       }
 
+      final userData = await FirestoreService().getUserByUid(user.uid);
+      final cooperativeName =
+          (userData?['fullName'] ?? user.displayName ?? 'Cooperative Officer')
+              .toString()
+              .trim();
+
       // 1. Check if the crop exists in 'products', if not, add it immediately
       final productId = _slugify(cropName);
       final marketName = _marketController.text.trim();
@@ -134,6 +140,9 @@ class _UploadPricePageState extends State<UploadPricePage> {
         'notes': _notesController.text.trim(),
         'status': 'pending',
         'uploadedBy': user.uid,
+        'cooperativeName': cooperativeName,
+        'uploadedByName': cooperativeName,
+        'cooperativeEmail': user.email,
         'sourceType': 'manual',
         'submittedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),

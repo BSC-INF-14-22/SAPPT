@@ -104,90 +104,125 @@ class MyPricesPage extends StatelessWidget {
     }
 
     return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        title: Row(
-          children: [
-            Text(
-              cropName,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: statusColor.withAlpha(25),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(statusIcon, size: 14, color: statusColor),
-                  const SizedBox(width: 4),
-                  Text(
-                    status.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: statusColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        subtitle: Column(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 8),
-            Text(
-              'MK $price | $market',
-              style: TextStyle(color: Colors.grey[700]),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    cropName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _buildStatusChip(status, statusIcon, statusColor),
+                const SizedBox(width: 4),
+                _buildActionsMenu(context, docId, data, cropName),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Submitted: $formattedDate',
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'edit') {
-              Navigator.pushNamed(
-                context,
-                '/edit-price',
-                arguments: {'docId': docId, 'data': data},
-              );
-            } else if (value == 'delete') {
-              _showDeleteConfirmation(context, docId, cropName);
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 'edit',
-              child: Row(
-                children: [
-                  Icon(Icons.edit, size: 20),
-                  SizedBox(width: 8),
-                  Text('Edit'),
-                ],
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'delete',
-              child: Row(
-                children: [
-                  Icon(Icons.delete, size: 20, color: Colors.red),
-                  SizedBox(width: 8),
-                  Text('Delete', style: TextStyle(color: Colors.red)),
-                ],
-              ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              children: [
+                _buildMetaItem(Icons.payments_outlined, 'MK $price'),
+                _buildMetaItem(Icons.storefront_outlined, market),
+                _buildMetaItem(Icons.schedule_outlined, formattedDate),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildStatusChip(String status, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withAlpha(25),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            status.toUpperCase(),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetaItem(IconData icon, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: Colors.grey[600]),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(color: Colors.grey[700], fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionsMenu(
+    BuildContext context,
+    String docId,
+    Map<String, dynamic> data,
+    String cropName,
+  ) {
+    return PopupMenuButton<String>(
+      padding: EdgeInsets.zero,
+      onSelected: (value) {
+        if (value == 'edit') {
+          Navigator.pushNamed(
+            context,
+            '/edit-price',
+            arguments: {'docId': docId, 'data': data},
+          );
+        } else if (value == 'delete') {
+          _showDeleteConfirmation(context, docId, cropName);
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: 'edit',
+          child: Row(
+            children: [
+              Icon(Icons.edit, size: 20),
+              SizedBox(width: 8),
+              Text('Edit'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete, size: 20, color: Colors.red),
+              SizedBox(width: 8),
+              Text('Delete', style: TextStyle(color: Colors.red)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

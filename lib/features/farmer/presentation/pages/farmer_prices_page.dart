@@ -344,7 +344,19 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
                                       fontSize: 15,
                                     ),
                                   ),
-                                  if (product['uploadedBy'] != null)
+                                  if (_cooperativeNameFromPrice(product) !=
+                                      null)
+                                    Text(
+                                      'By: ${_cooperativeNameFromPrice(product)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: theme.primaryColor,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    )
+                                  else if (product['uploadedBy'] != null)
                                     FutureBuilder<Map<String, dynamic>?>(
                                       future: FirestoreService().getUserByUid(
                                         product['uploadedBy'],
@@ -410,5 +422,15 @@ class _FarmerPricesPageState extends State<FarmerPricesPage> {
         ],
       ),
     );
+  }
+
+  String? _cooperativeNameFromPrice(Map<String, dynamic> price) {
+    final value = price['cooperativeName'] ??
+        price['uploadedByName'] ??
+        price['cooperativeOfficerName'];
+    if (value == null) return null;
+
+    final name = value.toString().trim();
+    return name.isEmpty ? null : name;
   }
 }
