@@ -15,6 +15,8 @@ class PriceApprovalPage extends StatefulWidget {
 
 class _PriceApprovalPageState extends State<PriceApprovalPage> {
   final _reasonController = TextEditingController();
+  final Set<String> _selectedPriceIds = {};
+  bool _isBulkProcessing = false;
 
   String _slugify(String value) {
     final slug = value
@@ -25,7 +27,11 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
     return slug.isEmpty ? 'unknown' : slug;
   }
 
-  void _approvePrice(String docId, Map<String, dynamic> data) async {
+  Future<void> _approvePrice(
+    String docId,
+    Map<String, dynamic> data, {
+    bool showFeedback = true,
+  }) async {
     try {
       final cropName = (data['cropName'] ?? data['productName'] ?? 'Unknown')
           .toString()
@@ -111,7 +117,7 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
             'New verified prices for $cropName are now available in the market.',
       );
 
-      if (!mounted) return;
+      if (!mounted || !showFeedback) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Price approved successfully.'),
@@ -188,6 +194,36 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
             '$cropName is now strongest at $location: MK ${bestPrice.toStringAsFixed(0)}/$unit.',
       );
     }
+  }
+
+  Future<void> _applyRejection(
+    String docId,
+    Map<String, dynamic> data,
+    String reason, {
+    bool showFeedback = true,
+  }) async {
+    await FirestoreService().updateData('prices', docId, {
+      'status': 'rejected',
+      'rejectionReason': reason,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    if (data['uploadedBy'] != null) {
+      await NotificationService().sendInAppNotification(
+        uid: data['uploadedBy'],
+        title: 'Price Rejected',
+        message:
+            'Your price for ${data['cropName']} was rejected. Reason: $reason',
+      );
+    }
+
+    if (!mounted || !showFeedback) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Price rejected.'),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
 
   void _rejectPrice(String docId, Map<String, dynamic> data) {
@@ -274,6 +310,126 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
     );
   }
 
+  Future<void> _approveSelected(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
+    final selectedDocs = docs
+        .where((doc) => _selectedPriceIds.contains(doc.id))
+        .toList();
+    if (selectedDocs.isEmpty) return;
+
+    setState(() => _isBulkProcessing = true);
+    try {
+      for (final doc in selectedDocs) {
+        await _approvePrice(doc.id, doc.data(), showFeedback: false);
+      }
+
+      if (!mounted) return;
+      setState(() => _selectedPriceIds.clear());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${selectedDocs.length} price(s) approved.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isBulkProcessing = false);
+    }
+  }
+
+  void _rejectSelected(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final selectedDocs = docs
+        .where((doc) => _selectedPriceIds.contains(doc.id))
+        .toList();
+    if (selectedDocs.isEmpty) return;
+
+    _reasonController.clear();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Reject ${selectedDocs.length} Selected Prices'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Please provide one reason for rejecting all selected prices:',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Rejection Reason',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final reason = _reasonController.text.trim();
+              if (reason.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Reason is required for rejection.'),
+                  ),
+                );
+                return;
+              }
+
+              Navigator.pop(context);
+              setState(() => _isBulkProcessing = true);
+              try {
+                for (final doc in selectedDocs) {
+                  await _applyRejection(
+                    doc.id,
+                    doc.data(),
+                    reason,
+                    showFeedback: false,
+                  );
+                }
+
+                if (!mounted) return;
+                setState(() => _selectedPriceIds.clear());
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('${selectedDocs.length} price(s) rejected.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              } finally {
+                if (mounted) setState(() => _isBulkProcessing = false);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Reject Selected'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -294,6 +450,8 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
           }
 
           final docs = snapshot.data?.docs ?? [];
+          final docIds = docs.map((doc) => doc.id).toSet();
+          _selectedPriceIds.removeWhere((id) => !docIds.contains(id));
 
           if (docs.isEmpty) {
             return Center(
@@ -312,20 +470,129 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final doc = docs[index];
-              return _buildPendingCard(doc.id, doc.data());
-            },
+          return Column(
+            children: [
+              _buildBulkActionBar(docs),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final doc = docs[index];
+                    return _buildPendingCard(
+                      doc.id,
+                      doc.data(),
+                      isSelected: _selectedPriceIds.contains(doc.id),
+                    );
+                  },
+                ),
+              ),
+            ],
           );
         },
       ),
     );
   }
 
-  Widget _buildPendingCard(String docId, Map<String, dynamic> data) {
+  Widget _buildBulkActionBar(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final selectedCount = _selectedPriceIds.length;
+    final allSelected = docs.isNotEmpty && selectedCount == docs.length;
+
+    return Material(
+      color: Colors.white,
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Checkbox(
+                  value: allSelected,
+                  onChanged: _isBulkProcessing
+                      ? null
+                      : (value) {
+                          setState(() {
+                            if (value == true) {
+                              _selectedPriceIds
+                                ..clear()
+                                ..addAll(docs.map((doc) => doc.id));
+                            } else {
+                              _selectedPriceIds.clear();
+                            }
+                          });
+                        },
+                ),
+                Expanded(
+                  child: Text(
+                    selectedCount == 0
+                        ? '${docs.length} pending price(s)'
+                        : '$selectedCount selected',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _isBulkProcessing || selectedCount == 0
+                      ? null
+                      : () => setState(() => _selectedPriceIds.clear()),
+                  child: const Text('Clear'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isBulkProcessing || selectedCount == 0
+                        ? null
+                        : () => _rejectSelected(docs),
+                    icon: const Icon(Icons.close, color: Colors.red),
+                    label: const Text(
+                      'Reject Selected',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.red),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isBulkProcessing || selectedCount == 0
+                        ? null
+                        : () => _approveSelected(docs),
+                    icon: _isBulkProcessing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.check),
+                    label: const Text('Approve Selected'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPendingCard(
+    String docId,
+    Map<String, dynamic> data, {
+    required bool isSelected,
+  }) {
     final theme = Theme.of(context);
     final cropName = data['cropName'] ?? 'Unknown';
     final price = data['price'] ?? '0';
@@ -351,10 +618,26 @@ class _PriceApprovalPageState extends State<PriceApprovalPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  cropName,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+                Checkbox(
+                  value: isSelected,
+                  onChanged: _isBulkProcessing
+                      ? null
+                      : (value) {
+                          setState(() {
+                            if (value == true) {
+                              _selectedPriceIds.add(docId);
+                            } else {
+                              _selectedPriceIds.remove(docId);
+                            }
+                          });
+                        },
+                ),
+                Expanded(
+                  child: Text(
+                    cropName,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 Text(
