@@ -10,6 +10,7 @@ import 'package:smart_agri_price_tracker/features/farmer/presentation/pages/farm
 import 'package:smart_agri_price_tracker/features/cooperative/presentation/pages/upload_price_page.dart';
 import 'package:smart_agri_price_tracker/features/cooperative/presentation/pages/my_prices_page.dart';
 import 'package:smart_agri_price_tracker/features/cooperative/presentation/pages/edit_price_page.dart';
+import 'package:smart_agri_price_tracker/features/cooperative/presentation/pages/whatsapp_market_import_page.dart';
 import 'package:smart_agri_price_tracker/features/admin/presentation/pages/manage_users_page.dart';
 import 'package:smart_agri_price_tracker/features/admin/presentation/pages/price_approval_page.dart';
 import 'package:smart_agri_price_tracker/features/admin/presentation/pages/admin_analytics_page.dart';
@@ -29,6 +30,7 @@ class AppRouter {
   static const String uploadPrice = '/upload-price';
   static const String myPrices = '/my-prices';
   static const String editPrice = '/edit-price';
+  static const String whatsappMarketImport = '/whatsapp-market-import';
   static const String manageUsers = '/manage-users';
   static const String priceApproval = '/price-approval';
   static const String adminAnalytics = '/admin-analytics';
@@ -47,6 +49,7 @@ class AppRouter {
       priceTrends: (context) => const FarmerTrendsPage(),
       uploadPrice: (context) => const UploadPricePage(),
       myPrices: (context) => const MyPricesPage(),
+      whatsappMarketImport: (context) => const WhatsappMarketImportPage(),
       manageUsers: (context) => const ManageUsersPage(),
       priceApproval: (context) => const PriceApprovalPage(),
       adminAnalytics: (context) => const AdminAnalyticsPage(),
@@ -78,6 +81,10 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const UploadPricePage());
       case myPrices:
         return MaterialPageRoute(builder: (_) => const MyPricesPage());
+      case whatsappMarketImport:
+        return MaterialPageRoute(
+          builder: (_) => const WhatsappMarketImportPage(),
+        );
       case priceApproval:
         return MaterialPageRoute(builder: (_) => const PriceApprovalPage());
       case adminAnalytics:

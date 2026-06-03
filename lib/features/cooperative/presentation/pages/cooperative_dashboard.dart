@@ -99,7 +99,7 @@ class CooperativeDashboard extends StatelessWidget {
                     mainAxisSpacing: 16,
                     mainAxisExtent: cardSize,
                   ),
-                  itemCount: 4,
+                  itemCount: 5,
                   itemBuilder: (context, index) {
                     switch (index) {
                       case 0:
@@ -138,6 +138,17 @@ class CooperativeDashboard extends StatelessWidget {
                             );
                             Navigator.pushNamed(context, AppRouter.myPrices);
                           },
+                        );
+                      case 3:
+                        return _buildDashboardCard(
+                          context,
+                          'WhatsApp Market Source',
+                          Icons.chat_outlined,
+                          Colors.teal,
+                          () => Navigator.pushNamed(
+                            context,
+                            AppRouter.whatsappMarketImport,
+                          ),
                         );
                       default:
                         return StreamBuilder<

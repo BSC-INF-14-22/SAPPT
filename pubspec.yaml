@@ -41,6 +41,9 @@ dependencies:
   fl_chart: ^1.2.0
   firebase_messaging: ^16.2.0
   shared_preferences: ^2.3.5
+  url_launcher: ^6.3.2
+  image_picker: ^1.2.2
+  google_mlkit_text_recognition: ^0.15.1
 
 dev_dependencies:
   flutter_test:

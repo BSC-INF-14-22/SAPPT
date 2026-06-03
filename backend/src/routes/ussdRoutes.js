@@ -31,6 +31,21 @@ const { handleUSSD } = require('../controllers/ussdController');
  *   "CON ..." → keep session alive
  *   "END ..." → close session
  */
-router.post('/', handleUSSD);
+router.post('/', async (req, res, next) => {
+  try {
+    await handleUSSD(req, res);
+  } catch (error) {
+    console.error('USSD request failed:', error && error.stack ? error.stack : error);
+
+    if (!res.headersSent) {
+      res
+        .type('text/plain')
+        .send('END SAPPT is temporarily unavailable. Please try again shortly.');
+      return;
+    }
+
+    next(error);
+  }
+});
 
 module.exports = router;

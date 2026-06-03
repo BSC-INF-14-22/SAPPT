@@ -4,6 +4,9 @@ const CURRENCY = 'MWK';
 const DEFAULT_UNIT = 'kg';
 const RANGE_PERCENT = 0.30;
 const MAX_MENU_ITEMS = 30;
+const PAGE_SIZE = 4;
+const CACHE_TTL_MS = 2 * 60 * 1000;
+const cacheStore = new Map();
 
 const toText = (value, fallback = '') => (
   value === undefined || value === null || typeof value === 'object'
@@ -39,6 +42,23 @@ const toMillis = (value) => {
 };
 
 const roundToNearest10 = (value) => Math.round(value / 10) * 10;
+
+const cached = async (key, loader) => {
+  const now = Date.now();
+  const cachedValue = cacheStore.get(key);
+
+  if (cachedValue && cachedValue.expiresAt > now) {
+    return cachedValue.value;
+  }
+
+  const value = await loader();
+  cacheStore.set(key, {
+    value,
+    expiresAt: now + CACHE_TTL_MS,
+  });
+
+  return value;
+};
 
 const mainMenu = () => (
   'CON Welcome to SAPPT\n' +
@@ -80,7 +100,7 @@ const productAliases = (name) => {
   return [...aliases];
 };
 
-const fetchApprovedPrices = async (limit = 500) => {
+const fetchApprovedPrices = async (limit = 500) => cached(`approved-prices:${limit}`, async () => {
   const snapshot = await db
     .collection('prices')
     .where('status', '==', 'approved')
@@ -88,9 +108,9 @@ const fetchApprovedPrices = async (limit = 500) => {
     .get();
 
   return snapshot.docs.map((doc) => doc.data()).filter(isVisiblePrice);
-};
+});
 
-const fetchProducts = async () => {
+const fetchProducts = async () => cached('ussd-products', async () => {
   const readProductCollection = async (collectionName) => {
     try {
       const snapshot = await db.collection(collectionName).limit(50).get();
@@ -122,9 +142,9 @@ const fetchProducts = async () => {
     }))
     .sort((a, b) => a.label.localeCompare(b.label)), (product) => normalize(product.label))
     .slice(0, MAX_MENU_ITEMS);
-};
+});
 
-const fetchLocations = async () => {
+const fetchLocations = async () => cached('ussd-locations', async () => {
   let locations = [];
 
   try {
@@ -155,21 +175,89 @@ const fetchLocations = async () => {
     locations.sort((a, b) => a.localeCompare(b)),
     (location) => normalize(location),
   ).slice(0, MAX_MENU_ITEMS);
+});
+
+const shorten = (value, max = 24) => {
+  const text = toText(value);
+  return text.length > max ? `${text.slice(0, max - 3)}...` : text;
 };
 
-const numberedMenu = (title, items, formatter = (item) => item) => (
-  `CON ${title}\n` +
-  items.map((item, index) => `${index + 1}. ${formatter(item)}`).join('\n') +
-  `\n${items.length + 1}. Back`
-);
+const pagedMenu = (title, items, page, formatter = (item) => item) => {
+  const start = page * PAGE_SIZE;
+  const pageItems = items.slice(start, start + PAGE_SIZE);
+  const hasNext = start + PAGE_SIZE < items.length;
+  const lines = pageItems.map((item, index) => (
+    `${index + 1}. ${shorten(formatter(item))}`
+  ));
 
-const productMenu = (products) => numberedMenu(
+  if (hasNext) lines.push(`${pageItems.length + 1}. More`);
+  lines.push(`${pageItems.length + (hasNext ? 2 : 1)}. Back`);
+
+  return `CON ${title}\n${lines.join('\n')}`;
+};
+
+const resolvePagedSelection = (title, items, tokens, formatter = (item) => item) => {
+  let page = 0;
+  let tokenIndex = 0;
+
+  while (true) {
+    const start = page * PAGE_SIZE;
+    const pageItems = items.slice(start, start + PAGE_SIZE);
+    const hasNext = start + PAGE_SIZE < items.length;
+    const backOption = pageItems.length + (hasNext ? 2 : 1);
+    const moreOption = hasNext ? pageItems.length + 1 : null;
+    const token = tokens[tokenIndex];
+
+    if (!token) {
+      return { type: 'menu', menu: pagedMenu(title, items, page, formatter) };
+    }
+
+    const choice = parseInt(token, 10);
+    if (Number.isNaN(choice)) return { type: 'invalid' };
+
+    if (hasNext && choice === moreOption) {
+      page += 1;
+      tokenIndex += 1;
+      continue;
+    }
+
+    if (choice === backOption) {
+      return { type: 'back' };
+    }
+
+    if (choice >= 1 && choice <= pageItems.length) {
+      return {
+        type: 'selected',
+        item: pageItems[choice - 1],
+        nextIndex: tokenIndex + 1,
+      };
+    }
+
+    return { type: 'invalid' };
+  }
+};
+
+const productMenu = (products, page = 0) => pagedMenu(
   'Select Product Category',
   products,
+  page,
   (product) => product.label,
 );
 
-const locationMenu = (locations) => numberedMenu('Select Market', locations);
+const locationMenu = (locations, page = 0) => pagedMenu('Select Market', locations, page);
+
+const resolveProductSelection = (products, tokens) => {
+  return resolvePagedSelection(
+    'Select Product Category',
+    products,
+    tokens,
+    (product) => product.label,
+  );
+};
+
+const resolveLocationSelection = (locations, tokens) => {
+  return resolvePagedSelection('Select Market', locations, tokens);
+};
 
 const exitMessage = () => 'END Thank you for using SAPPT.';
 
@@ -242,18 +330,12 @@ const priceResultMenu = async (product, market) => {
   );
 };
 
-const parseSelection = (value, max) => {
-  const index = parseInt(value, 10) - 1;
-  if (Number.isNaN(index) || index < 0 || index >= max) return null;
-  return index;
-};
-
 const handleUSSD = async (req, res) => {
-  const { sessionId = 'unknown', phoneNumber = 'unknown', text = '' } = req.body;
+  const { sessionId = 'unknown', phoneNumber = 'unknown', text = '' } = req.body || {};
   console.log(`USSD | Session: ${sessionId} | Phone: ${phoneNumber} | Input: "${text}"`);
 
   const inputs = text.split('*').filter((item) => item !== '');
-  const [menuChoice, productChoice, marketChoice, resultChoice] = inputs;
+  const [menuChoice] = inputs;
 
   if (inputs.length === 0) {
     return res.type('text/plain').send(mainMenu());
@@ -267,53 +349,45 @@ const handleUSSD = async (req, res) => {
     return res.type('text/plain').send('END Invalid input. Please dial again.');
   }
 
-  if (!productChoice) {
-    const products = await fetchProducts();
-    if (products.length === 0) {
-      return res.type('text/plain').send('END No products available yet.');
-    }
-    return res.type('text/plain').send(productMenu(products));
-  }
-
   const products = await fetchProducts();
   if (products.length === 0) {
     return res.type('text/plain').send('END No products available yet.');
   }
 
-  if (productChoice === String(products.length + 1)) {
+  const productResult = resolveProductSelection(products, inputs.slice(1));
+  if (productResult.type === 'menu') {
+    return res.type('text/plain').send(productResult.menu);
+  }
+  if (productResult.type === 'back') {
     return res.type('text/plain').send(mainMenu());
   }
-
-  const productIndex = parseSelection(productChoice, products.length);
-  if (productIndex === null) {
+  if (productResult.type !== 'selected') {
     return res.type('text/plain').send('END Invalid product. Please dial again.');
   }
 
-  const product = products[productIndex];
-
-  if (!marketChoice) {
-    const locations = await fetchLocations();
-    if (locations.length === 0) {
-      return res.type('text/plain').send('END No markets available yet.');
-    }
-    return res.type('text/plain').send(locationMenu(locations));
-  }
+  const product = productResult.item;
 
   const locations = await fetchLocations();
   if (locations.length === 0) {
     return res.type('text/plain').send('END No markets available yet.');
   }
 
-  if (marketChoice === String(locations.length + 1)) {
+  const locationResult = resolveLocationSelection(
+    locations,
+    inputs.slice(1 + productResult.nextIndex),
+  );
+  if (locationResult.type === 'menu') {
+    return res.type('text/plain').send(locationResult.menu);
+  }
+  if (locationResult.type === 'back') {
     return res.type('text/plain').send(productMenu(products));
   }
-
-  const marketIndex = parseSelection(marketChoice, locations.length);
-  if (marketIndex === null) {
+  if (locationResult.type !== 'selected') {
     return res.type('text/plain').send('END Invalid market. Please dial again.');
   }
 
-  const market = locations[marketIndex];
+  const market = locationResult.item;
+  const resultChoice = inputs[1 + productResult.nextIndex + locationResult.nextIndex];
 
   if (!resultChoice) {
     return res.type('text/plain').send(await priceResultMenu(product, market));
