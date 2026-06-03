@@ -8,6 +8,60 @@ const PAGE_SIZE = 4;
 const CACHE_TTL_MS = 2 * 60 * 1000;
 const cacheStore = new Map();
 
+const LANGUAGES = {
+  1: 'en',
+  2: 'ny',
+};
+
+const messages = {
+  en: {
+    languageTitle: 'Choose language',
+    languageOptionOne: 'English',
+    languageOptionTwo: 'Chichewa',
+    welcome: 'Welcome to SAPPT',
+    viewPrices: 'View Prices',
+    exit: 'Exit',
+    selectProduct: 'Select Product Category',
+    selectMarket: 'Select Market',
+    more: 'More',
+    back: 'Back',
+    thanks: 'Thank you for using SAPPT.',
+    invalid: 'Invalid input. Please dial again.',
+    invalidLanguage: 'Invalid language. Please dial again.',
+    invalidProduct: 'Invalid product. Please dial again.',
+    invalidMarket: 'Invalid market. Please dial again.',
+    noProducts: 'No products available yet.',
+    noMarkets: 'No markets available yet.',
+    noPrices: 'No approved prices found.',
+    pricesIn: (product, market) => `${product} prices in ${market}:`,
+    priceRange: (min, max, unit) => `${CURRENCY} ${min} to ${max} per ${unit}`,
+  },
+  ny: {
+    languageTitle: 'Sankhani chilankhulo',
+    languageOptionOne: 'English',
+    languageOptionTwo: 'Chichewa',
+    welcome: 'Takulandirani ku SAPPT',
+    viewPrices: 'Onani Mitengo',
+    exit: 'Tulukani',
+    selectProduct: 'Sankhani Mtundu wa Mbewu',
+    selectMarket: 'Sankhani Msika',
+    more: 'Zina',
+    back: 'Bwererani',
+    thanks: 'Zikomo pogwiritsa ntchito SAPPT.',
+    invalid: 'Mwasankha molakwika. Yambaninso.',
+    invalidLanguage: 'Chilankhulo cholakwika. Yambaninso.',
+    invalidProduct: 'Mbewu yolakwika. Yambaninso.',
+    invalidMarket: 'Msika wolakwika. Yambaninso.',
+    noProducts: 'Palibe mbewu zomwe zilipo panopa.',
+    noMarkets: 'Palibe misika yomwe ilipo panopa.',
+    noPrices: 'Palibe mitengo yovomerezeka yomwe yapezeka.',
+    pricesIn: (product, market) => `Mitengo ya ${product} ku ${market}:`,
+    priceRange: (min, max, unit) => `${CURRENCY} ${min} mpaka ${max} pa ${unit}`,
+  },
+};
+
+const tr = (language) => messages[language] || messages.en;
+
 const toText = (value, fallback = '') => (
   value === undefined || value === null || typeof value === 'object'
     ? fallback
@@ -60,11 +114,23 @@ const cached = async (key, loader) => {
   return value;
 };
 
-const mainMenu = () => (
-  'CON Welcome to SAPPT\n' +
-  '1. View Prices\n' +
-  '2. Exit'
-);
+const languageMenu = () => {
+  const label = tr('en');
+  return (
+    `CON ${label.languageTitle}\n` +
+    `1. ${label.languageOptionOne}\n` +
+    `2. ${label.languageOptionTwo}`
+  );
+};
+
+const mainMenu = (language) => {
+  const label = tr(language);
+  return (
+    `CON ${label.welcome}\n` +
+    `1. ${label.viewPrices}\n` +
+    `2. ${label.exit}`
+  );
+};
 
 const uniqueByKey = (items, keySelector) => {
   const map = new Map();
@@ -182,7 +248,8 @@ const shorten = (value, max = 24) => {
   return text.length > max ? `${text.slice(0, max - 3)}...` : text;
 };
 
-const pagedMenu = (title, items, page, formatter = (item) => item) => {
+const pagedMenu = (title, items, page, language, formatter = (item) => item) => {
+  const label = tr(language);
   const start = page * PAGE_SIZE;
   const pageItems = items.slice(start, start + PAGE_SIZE);
   const hasNext = start + PAGE_SIZE < items.length;
@@ -190,13 +257,13 @@ const pagedMenu = (title, items, page, formatter = (item) => item) => {
     `${index + 1}. ${shorten(formatter(item))}`
   ));
 
-  if (hasNext) lines.push(`${pageItems.length + 1}. More`);
-  lines.push(`${pageItems.length + (hasNext ? 2 : 1)}. Back`);
+  if (hasNext) lines.push(`${pageItems.length + 1}. ${label.more}`);
+  lines.push(`${pageItems.length + (hasNext ? 2 : 1)}. ${label.back}`);
 
   return `CON ${title}\n${lines.join('\n')}`;
 };
 
-const resolvePagedSelection = (title, items, tokens, formatter = (item) => item) => {
+const resolvePagedSelection = (title, items, tokens, language, formatter = (item) => item) => {
   let page = 0;
   let tokenIndex = 0;
 
@@ -209,7 +276,7 @@ const resolvePagedSelection = (title, items, tokens, formatter = (item) => item)
     const token = tokens[tokenIndex];
 
     if (!token) {
-      return { type: 'menu', menu: pagedMenu(title, items, page, formatter) };
+      return { type: 'menu', menu: pagedMenu(title, items, page, language, formatter) };
     }
 
     const choice = parseInt(token, 10);
@@ -237,29 +304,36 @@ const resolvePagedSelection = (title, items, tokens, formatter = (item) => item)
   }
 };
 
-const productMenu = (products, page = 0) => pagedMenu(
-  'Select Product Category',
+const productMenu = (products, language, page = 0) => pagedMenu(
+  tr(language).selectProduct,
   products,
   page,
+  language,
   (product) => product.label,
 );
 
-const locationMenu = (locations, page = 0) => pagedMenu('Select Market', locations, page);
+const locationMenu = (locations, language, page = 0) => pagedMenu(
+  tr(language).selectMarket,
+  locations,
+  page,
+  language,
+);
 
-const resolveProductSelection = (products, tokens) => {
+const resolveProductSelection = (products, tokens, language) => {
   return resolvePagedSelection(
-    'Select Product Category',
+    tr(language).selectProduct,
     products,
     tokens,
+    language,
     (product) => product.label,
   );
 };
 
-const resolveLocationSelection = (locations, tokens) => {
-  return resolvePagedSelection('Select Market', locations, tokens);
+const resolveLocationSelection = (locations, tokens, language) => {
+  return resolvePagedSelection(tr(language).selectMarket, locations, tokens, language);
 };
 
-const exitMessage = () => 'END Thank you for using SAPPT.';
+const exitMessage = (language) => `END ${tr(language).thanks}`;
 
 const isVisiblePrice = (data) => {
   const price = toNumber(data.price);
@@ -310,23 +384,24 @@ const fetchAverageSellingPrice = async (product, market) => {
   };
 };
 
-const priceResultMenu = async (product, market) => {
+const priceResultMenu = async (product, market, language) => {
   const range = await fetchAverageSellingPrice(product, market);
+  const label = tr(language);
 
   if (!range) {
     return (
-      `CON ${product.label} prices in ${market}:\n` +
-      'No approved prices found.\n' +
-      '1. Back\n' +
-      '2. Exit'
+      `CON ${label.pricesIn(product.label, market)}\n` +
+      `${label.noPrices}\n` +
+      `1. ${label.back}\n` +
+      `2. ${label.exit}`
     );
   }
 
   return (
-    `CON ${product.label} prices in ${market}:\n` +
-    `${CURRENCY} ${range.min} to ${range.max} per ${range.unit}\n` +
-    '1. Back\n' +
-    '2. Exit'
+    `CON ${label.pricesIn(product.label, market)}\n` +
+    `${label.priceRange(range.min, range.max, range.unit)}\n` +
+    `1. ${label.back}\n` +
+    `2. ${label.exit}`
   );
 };
 
@@ -335,73 +410,83 @@ const handleUSSD = async (req, res) => {
   console.log(`USSD | Session: ${sessionId} | Phone: ${phoneNumber} | Input: "${text}"`);
 
   const inputs = text.split('*').filter((item) => item !== '');
-  const [menuChoice] = inputs;
+  const [languageChoice, menuChoice] = inputs;
 
   if (inputs.length === 0) {
-    return res.type('text/plain').send(mainMenu());
+    return res.type('text/plain').send(languageMenu());
+  }
+
+  const language = LANGUAGES[languageChoice];
+  if (!language) {
+    return res.type('text/plain').send(`END ${tr('en').invalidLanguage}`);
+  }
+
+  if (inputs.length === 1) {
+    return res.type('text/plain').send(mainMenu(language));
   }
 
   if (menuChoice === '2') {
-    return res.type('text/plain').send(exitMessage());
+    return res.type('text/plain').send(exitMessage(language));
   }
 
   if (menuChoice !== '1') {
-    return res.type('text/plain').send('END Invalid input. Please dial again.');
+    return res.type('text/plain').send(`END ${tr(language).invalid}`);
   }
 
   const products = await fetchProducts();
   if (products.length === 0) {
-    return res.type('text/plain').send('END No products available yet.');
+    return res.type('text/plain').send(`END ${tr(language).noProducts}`);
   }
 
-  const productResult = resolveProductSelection(products, inputs.slice(1));
+  const productResult = resolveProductSelection(products, inputs.slice(2), language);
   if (productResult.type === 'menu') {
     return res.type('text/plain').send(productResult.menu);
   }
   if (productResult.type === 'back') {
-    return res.type('text/plain').send(mainMenu());
+    return res.type('text/plain').send(mainMenu(language));
   }
   if (productResult.type !== 'selected') {
-    return res.type('text/plain').send('END Invalid product. Please dial again.');
+    return res.type('text/plain').send(`END ${tr(language).invalidProduct}`);
   }
 
   const product = productResult.item;
 
   const locations = await fetchLocations();
   if (locations.length === 0) {
-    return res.type('text/plain').send('END No markets available yet.');
+    return res.type('text/plain').send(`END ${tr(language).noMarkets}`);
   }
 
   const locationResult = resolveLocationSelection(
     locations,
-    inputs.slice(1 + productResult.nextIndex),
+    inputs.slice(2 + productResult.nextIndex),
+    language,
   );
   if (locationResult.type === 'menu') {
     return res.type('text/plain').send(locationResult.menu);
   }
   if (locationResult.type === 'back') {
-    return res.type('text/plain').send(productMenu(products));
+    return res.type('text/plain').send(productMenu(products, language));
   }
   if (locationResult.type !== 'selected') {
-    return res.type('text/plain').send('END Invalid market. Please dial again.');
+    return res.type('text/plain').send(`END ${tr(language).invalidMarket}`);
   }
 
   const market = locationResult.item;
-  const resultChoice = inputs[1 + productResult.nextIndex + locationResult.nextIndex];
+  const resultChoice = inputs[2 + productResult.nextIndex + locationResult.nextIndex];
 
   if (!resultChoice) {
-    return res.type('text/plain').send(await priceResultMenu(product, market));
+    return res.type('text/plain').send(await priceResultMenu(product, market, language));
   }
 
   if (resultChoice === '1') {
-    return res.type('text/plain').send(locationMenu(locations));
+    return res.type('text/plain').send(locationMenu(locations, language));
   }
 
   if (resultChoice === '2') {
-    return res.type('text/plain').send(exitMessage());
+    return res.type('text/plain').send(exitMessage(language));
   }
 
-  return res.type('text/plain').send('END Invalid input. Please dial again.');
+  return res.type('text/plain').send(`END ${tr(language).invalid}`);
 };
 
 module.exports = { handleUSSD };
