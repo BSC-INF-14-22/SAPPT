@@ -176,32 +176,13 @@ const fetchApprovedPrices = async (limit = 500) => cached(`approved-prices:${lim
   return snapshot.docs.map((doc) => doc.data()).filter(isVisiblePrice);
 });
 
-const fetchProducts = async () => cached('ussd-products', async () => {
-  const readProductCollection = async (collectionName) => {
-    try {
-      const snapshot = await db.collection(collectionName).limit(50).get();
-      return snapshot.docs
-        .map((doc) => doc.data())
-        .map((item) => firstText(item.name, item.cropName, item.productName))
-        .filter(Boolean);
-    } catch (error) {
-      console.error(`USSD fetch ${collectionName} failed:`, error.message);
-      return [];
-    }
-  };
-
-  const fromProducts = await readProductCollection('products');
-  const fromCommodities = fromProducts.length > 0
-    ? []
-    : await readProductCollection('commodities');
-
-  const catalogNames = [...fromProducts, ...fromCommodities];
-  const fallbackPrices = catalogNames.length > 0 ? [] : await fetchApprovedPrices();
-  const fallbackNames = fallbackPrices
+const fetchProducts = async () => cached('ussd-products-approved-only', async () => {
+  const approvedPrices = await fetchApprovedPrices();
+  const productNames = approvedPrices
     .map((price) => toText(price.cropName || price.productName || price.name))
     .filter(Boolean);
 
-  return uniqueByKey([...catalogNames, ...fallbackNames]
+  return uniqueByKey(productNames
     .map((name) => ({
       label: name,
       aliases: productAliases(name),
@@ -210,32 +191,11 @@ const fetchProducts = async () => cached('ussd-products', async () => {
     .slice(0, MAX_MENU_ITEMS);
 });
 
-const fetchLocations = async () => cached('ussd-locations', async () => {
-  let locations = [];
-
-  try {
-    const snapshot = await db.collection('markets').limit(80).get();
-    locations = snapshot.docs
-      .map((doc) => doc.data())
-      .filter((market) => market.isActive !== false)
-      .map((market) => firstText(
-        market.district,
-        market.region,
-        market.location,
-        market.name,
-        market.marketName,
-      ))
-      .filter(Boolean);
-  } catch (error) {
-    console.error('USSD fetch markets failed:', error.message);
-  }
-
-  if (locations.length === 0) {
-    const prices = await fetchApprovedPrices();
-    locations = prices
-      .map((price) => firstText(price.district, price.region, price.location))
-      .filter(Boolean);
-  }
+const fetchLocations = async (product) => cached(`ussd-locations-approved-only:${normalize(product.label)}`, async () => {
+  const locations = (await fetchApprovedPrices())
+    .filter((price) => productMatches(firstText(price.cropName, price.productName, price.name), product))
+    .map((price) => firstText(price.district, price.region, price.location))
+    .filter(Boolean);
 
   return uniqueByKey(
     locations.sort((a, b) => a.localeCompare(b)),
@@ -451,7 +411,7 @@ const handleUSSD = async (req, res) => {
 
   const product = productResult.item;
 
-  const locations = await fetchLocations();
+  const locations = await fetchLocations(product);
   if (locations.length === 0) {
     return res.type('text/plain').send(`END ${tr(language).noMarkets}`);
   }
