@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:smart_agri_price_tracker/core/routing/app_router.dart';
@@ -23,13 +22,24 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
 
   final ImagePicker _picker = ImagePicker();
   final TextRecognizer _textRecognizer = TextRecognizer();
-  final List<_OcrResult> _results = [];
   final List<_PriceDraft> _drafts = [];
   static const String _defaultUnit = 'kg';
 
   bool _isProcessing = false;
   bool _isUploading = false;
   bool _autoUploadAfterImport = true;
+  bool _hasSuccessfulUpload = false;
+
+  bool get _isBusy => _isProcessing || _isUploading;
+  bool get _hasUploadableDrafts => _drafts.any(
+    (draft) =>
+        draft.selected &&
+        draft.date.trim().isNotEmpty &&
+        draft.cropName.trim().isNotEmpty &&
+        draft.price.trim().isNotEmpty &&
+        _parseDraftDate(draft.date.trim()) != null &&
+        _parseNumber(draft.price.trim()) != null,
+  );
 
   final List<String> _districts = const [
     'Chitipa',
@@ -87,10 +97,11 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
 
     if (topThreeImages.isEmpty) return;
     var processedSuccessfully = false;
+    var rejectedImages = 0;
 
     setState(() {
       _isProcessing = true;
-      _results.clear();
+      _hasSuccessfulUpload = false;
       _drafts.clear();
     });
 
@@ -98,13 +109,16 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
       for (final image in topThreeImages) {
         final inputImage = InputImage.fromFilePath(image.path);
         final recognizedText = await _textRecognizer.processImage(inputImage);
-        _results.add(
-          _OcrResult(fileName: image.name, text: recognizedText.text.trim()),
-        );
-        _drafts.addAll(_parsePriceDrafts(recognizedText, image.name));
+        final drafts = _parsePriceDrafts(recognizedText, image.name);
+        if (drafts.isEmpty) {
+          rejectedImages += 1;
+          continue;
+        }
+
+        _drafts.addAll(drafts);
       }
 
-      processedSuccessfully = true;
+      processedSuccessfully = _drafts.isNotEmpty;
 
       if (mounted) {
         setState(() {});
@@ -121,26 +135,21 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
       }
     }
 
+    if (rejectedImages > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$rejectedImages image(s) rejected because no valid price table was detected.',
+          ),
+        ),
+      );
+    }
+
     if (processedSuccessfully && mounted && _autoUploadAfterImport) {
       await _uploadSelectedDrafts(
         emptyMessage: 'No valid price rows were detected for upload.',
+        clearAfterSuccess: true,
       );
-    }
-  }
-
-  Future<void> _copyAllText() async {
-    final text = _results
-        .map((result) => '${result.fileName}\n${result.text}')
-        .join('\n\n---\n\n');
-
-    if (text.trim().isEmpty) return;
-
-    await Clipboard.setData(ClipboardData(text: text));
-
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Extracted text copied.')));
     }
   }
 
@@ -668,8 +677,33 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
     return slug.isEmpty ? 'unknown' : slug;
   }
 
+  String _priceDocumentId(String cropName, String district) {
+    return _slugify('$cropName $district');
+  }
+
+  void _clearDetectedRows() {
+    if (_isBusy) return;
+    setState(() {
+      _drafts.clear();
+      _hasSuccessfulUpload = false;
+    });
+  }
+
+  bool _isSameUploadedPrice(
+    Map<String, dynamic> existing,
+    _PriceDraft draft,
+    int price,
+  ) {
+    return _parseNumber(existing['price']?.toString()) == price &&
+        (existing['priceDateText'] ?? '').toString().trim() ==
+            draft.date.trim() &&
+        (existing['sourceRawText'] ?? '').toString().trim() ==
+            draft.sourceLine.trim();
+  }
+
   Future<void> _uploadSelectedDrafts({
     String emptyMessage = 'Select at least one valid price row.',
+    bool clearAfterSuccess = false,
   }) async {
     final selectedDrafts = _drafts
         .where(
@@ -703,6 +737,8 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
           (userData?['fullName'] ?? user.displayName ?? 'Cooperative Officer')
               .toString()
               .trim();
+      var uploadedCount = 0;
+      var alreadyUploadedCount = 0;
 
       for (final draft in selectedDrafts) {
         final cropName = draft.cropName.trim();
@@ -750,7 +786,18 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
               'updatedAt': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
 
-        await FirestoreService().addData('prices', {
+        final priceRef = FirebaseFirestore.instance
+            .collection('prices')
+            .doc(_priceDocumentId(cropName, draft.district));
+        final priceSnapshot = await priceRef.get();
+        final existingPrice = priceSnapshot.data();
+        if (existingPrice != null &&
+            _isSameUploadedPrice(existingPrice, draft, price)) {
+          alreadyUploadedCount += 1;
+          continue;
+        }
+
+        final priceData = {
           'cropName': cropName,
           'productName': cropName,
           'price': price,
@@ -774,20 +821,44 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
           'sourceImage': draft.sourceImage,
           'sourceRawText': draft.sourceLine,
           'submittedAt': priceTimestamp,
-          'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
-        });
+        };
+        if (!priceSnapshot.exists) {
+          priceData['createdAt'] = FieldValue.serverTimestamp();
+        }
+
+        await priceRef.set(priceData, SetOptions(merge: true));
+        await _deleteDuplicatePriceDocs(
+          canonicalDocId: priceRef.id,
+          cropName: cropName,
+          district: draft.district,
+        );
+        uploadedCount += 1;
       }
 
       if (mounted) {
         for (final draft in selectedDrafts) {
           draft.selected = false;
         }
+        _hasSuccessfulUpload = uploadedCount > 0 || alreadyUploadedCount > 0;
+        final shouldClearRows =
+            clearAfterSuccess ||
+            (uploadedCount == 0 && alreadyUploadedCount > 0);
+        if (shouldClearRows) {
+          _drafts.clear();
+        }
+
+        final message = uploadedCount == 0 && alreadyUploadedCount > 0
+            ? '$alreadyUploadedCount price(s) already uploaded.'
+            : alreadyUploadedCount > 0
+            ? '$uploadedCount price(s) uploaded, $alreadyUploadedCount already uploaded.'
+            : '$uploadedCount price(s) uploaded.';
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${selectedDrafts.length} price(s) uploaded.'),
-            backgroundColor: Colors.green,
+            content: Text(message),
+            backgroundColor: uploadedCount == 0 ? Colors.orange : Colors.green,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -804,6 +875,30 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
       if (mounted) {
         setState(() => _isUploading = false);
       }
+    }
+  }
+
+  Future<void> _deleteDuplicatePriceDocs({
+    required String canonicalDocId,
+    required String cropName,
+    required String district,
+  }) async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('prices')
+        .where('cropName', isEqualTo: cropName)
+        .where('district', isEqualTo: district)
+        .get();
+
+    final batch = FirebaseFirestore.instance.batch();
+    var deleteCount = 0;
+    for (final doc in snapshot.docs) {
+      if (doc.id == canonicalDocId) continue;
+      batch.delete(doc.reference);
+      deleteCount += 1;
+    }
+
+    if (deleteCount > 0) {
+      await batch.commit();
     }
   }
 
@@ -855,7 +950,7 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
             _ActionButton(
               label: 'Open WhatsApp Channel',
               icon: Icons.chat_outlined,
-              onPressed: _openChannel,
+              onPressed: _isBusy ? null : _openChannel,
             ),
             const SizedBox(height: 12),
             _ActionButton(
@@ -863,7 +958,7 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
                   ? 'Select Pictures & Auto Upload'
                   : 'Select Saved Top 3 Pictures',
               icon: Icons.image_search_outlined,
-              onPressed: _isProcessing ? null : _pickAndReadImages,
+              onPressed: _isBusy ? null : _pickAndReadImages,
             ),
             const SizedBox(height: 8),
             SwitchListTile(
@@ -881,41 +976,61 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
             _ActionButton(
               label: 'Go to Upload Prices',
               icon: Icons.cloud_upload_outlined,
-              onPressed: () =>
-                  Navigator.pushNamed(context, AppRouter.uploadPrice),
+              onPressed: _isBusy
+                  ? null
+                  : () => Navigator.pushNamed(context, AppRouter.uploadPrice),
             ),
             const SizedBox(height: 24),
+            if (_isUploading) ...[
+              Card(
+                color: Colors.green.withAlpha(18),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Automatically uploading detected prices...',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             if (_isProcessing)
               const Center(child: CircularProgressIndicator())
-            else if (_results.isEmpty)
-              const Text('No pictures processed yet.')
-            else ...[
+            else if (_hasSuccessfulUpload && _drafts.isEmpty)
+              const Text('Prices are already uploaded.')
+            else if (_drafts.isEmpty)
+              const Text('No pictures processed yet.'),
+            if (_drafts.isNotEmpty) ...[
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Extracted Text',
+                    'Detected Price Rows',
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   TextButton.icon(
-                    onPressed: _copyAllText,
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Copy All'),
+                    onPressed: _isBusy ? null : _clearDetectedRows,
+                    icon: const Icon(Icons.clear_all),
+                    label: const Text('Clear'),
                   ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              for (final result in _results) _OcrResultCard(result: result),
-            ],
-            if (_drafts.isNotEmpty) ...[
-              const SizedBox(height: 20),
-              Text(
-                'Detected Price Rows',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
               ),
               const SizedBox(height: 8),
               Text(
@@ -925,13 +1040,18 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
               ),
               const SizedBox(height: 12),
               for (final draft in _drafts)
-                _PriceDraftCard(draft: draft, onChanged: () => setState(() {})),
+                _PriceDraftCard(
+                  draft: draft,
+                  enabled: !_isBusy,
+                  onChanged: () => setState(() {}),
+                ),
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton.icon(
-                  onPressed: _isUploading
+                  onPressed:
+                      _isBusy || _hasSuccessfulUpload || !_hasUploadableDrafts
                       ? null
                       : () => _uploadSelectedDrafts(),
                   icon: _isUploading
@@ -942,7 +1062,11 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
                         )
                       : const Icon(Icons.cloud_upload_outlined),
                   label: Text(
-                    _isUploading ? 'Uploading...' : 'Upload Selected Prices',
+                    _isUploading
+                        ? 'Uploading...'
+                        : _hasSuccessfulUpload
+                        ? 'Prices Already Uploaded'
+                        : 'Upload Selected Prices',
                   ),
                 ),
               ),
@@ -956,9 +1080,14 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
 
 class _PriceDraftCard extends StatelessWidget {
   final _PriceDraft draft;
+  final bool enabled;
   final VoidCallback onChanged;
 
-  const _PriceDraftCard({required this.draft, required this.onChanged});
+  const _PriceDraftCard({
+    required this.draft,
+    required this.enabled,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -975,14 +1104,17 @@ class _PriceDraftCard extends StatelessWidget {
               value: draft.selected,
               title: Text('Source: ${draft.sourceImage}'),
               subtitle: Text(draft.sourceLine),
-              onChanged: (value) {
-                draft.selected = value ?? true;
-                onChanged();
-              },
+              onChanged: enabled
+                  ? (value) {
+                      draft.selected = value ?? true;
+                      onChanged();
+                    }
+                  : null,
             ),
             const SizedBox(height: 8),
             TextFormField(
               initialValue: draft.date,
+              enabled: enabled,
               decoration: const InputDecoration(
                 labelText: 'Date',
                 border: OutlineInputBorder(),
@@ -992,6 +1124,7 @@ class _PriceDraftCard extends StatelessWidget {
             const SizedBox(height: 10),
             TextFormField(
               initialValue: draft.cropName,
+              enabled: enabled,
               decoration: const InputDecoration(
                 labelText: 'Commodity',
                 border: OutlineInputBorder(),
@@ -1001,6 +1134,7 @@ class _PriceDraftCard extends StatelessWidget {
             const SizedBox(height: 10),
             TextFormField(
               initialValue: draft.district,
+              enabled: enabled,
               decoration: const InputDecoration(
                 labelText: 'Location',
                 border: OutlineInputBorder(),
@@ -1014,6 +1148,7 @@ class _PriceDraftCard extends StatelessWidget {
             const SizedBox(height: 10),
             TextFormField(
               initialValue: draft.price,
+              enabled: enabled,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'Amount (MK)',
@@ -1051,43 +1186,6 @@ class _ActionButton extends StatelessWidget {
       ),
     );
   }
-}
-
-class _OcrResultCard extends StatelessWidget {
-  final _OcrResult result;
-
-  const _OcrResultCard({required this.result});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              result.fileName,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            SelectableText(
-              result.text.isEmpty ? 'No readable text found.' : result.text,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OcrResult {
-  final String fileName;
-  final String text;
-
-  const _OcrResult({required this.fileName, required this.text});
 }
 
 class _OcrLine {
