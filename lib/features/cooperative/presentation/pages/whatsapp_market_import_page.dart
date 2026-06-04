@@ -677,8 +677,13 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
     return slug.isEmpty ? 'unknown' : slug;
   }
 
-  String _priceDocumentId(String cropName, String district) {
-    return _slugify('$cropName $district');
+  String _priceDocumentId({
+    required String userId,
+    required String cropName,
+    required String district,
+    required int price,
+  }) {
+    return _slugify('$userId $cropName $district $price');
   }
 
   void _clearDetectedRows() {
@@ -687,18 +692,6 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
       _drafts.clear();
       _hasSuccessfulUpload = false;
     });
-  }
-
-  bool _isSameUploadedPrice(
-    Map<String, dynamic> existing,
-    _PriceDraft draft,
-    int price,
-  ) {
-    return _parseNumber(existing['price']?.toString()) == price &&
-        (existing['priceDateText'] ?? '').toString().trim() ==
-            draft.date.trim() &&
-        (existing['sourceRawText'] ?? '').toString().trim() ==
-            draft.sourceLine.trim();
   }
 
   Future<void> _uploadSelectedDrafts({
@@ -788,14 +781,14 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
 
         final priceRef = FirebaseFirestore.instance
             .collection('prices')
-            .doc(_priceDocumentId(cropName, draft.district));
-        final priceSnapshot = await priceRef.get();
-        final existingPrice = priceSnapshot.data();
-        if (existingPrice != null &&
-            _isSameUploadedPrice(existingPrice, draft, price)) {
-          alreadyUploadedCount += 1;
-          continue;
-        }
+            .doc(
+              _priceDocumentId(
+                userId: user.uid,
+                cropName: cropName,
+                district: draft.district,
+                price: price,
+              ),
+            );
 
         final priceData = {
           'cropName': cropName,
@@ -821,18 +814,25 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
           'sourceImage': draft.sourceImage,
           'sourceRawText': draft.sourceLine,
           'submittedAt': priceTimestamp,
+          'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         };
-        if (!priceSnapshot.exists) {
-          priceData['createdAt'] = FieldValue.serverTimestamp();
+
+        final matchingPrice = await FirebaseFirestore.instance
+            .collection('prices')
+            .where('uploadedBy', isEqualTo: user.uid)
+            .where('cropName', isEqualTo: cropName)
+            .where('district', isEqualTo: draft.district)
+            .where('price', isEqualTo: price)
+            .limit(1)
+            .get();
+
+        if (matchingPrice.docs.isNotEmpty) {
+          alreadyUploadedCount += 1;
+          continue;
         }
 
         await priceRef.set(priceData, SetOptions(merge: true));
-        await _deleteDuplicatePriceDocs(
-          canonicalDocId: priceRef.id,
-          cropName: cropName,
-          district: draft.district,
-        );
         uploadedCount += 1;
       }
 
@@ -875,30 +875,6 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
       if (mounted) {
         setState(() => _isUploading = false);
       }
-    }
-  }
-
-  Future<void> _deleteDuplicatePriceDocs({
-    required String canonicalDocId,
-    required String cropName,
-    required String district,
-  }) async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('prices')
-        .where('cropName', isEqualTo: cropName)
-        .where('district', isEqualTo: district)
-        .get();
-
-    final batch = FirebaseFirestore.instance.batch();
-    var deleteCount = 0;
-    for (final doc in snapshot.docs) {
-      if (doc.id == canonicalDocId) continue;
-      batch.delete(doc.reference);
-      deleteCount += 1;
-    }
-
-    if (deleteCount > 0) {
-      await batch.commit();
     }
   }
 
