@@ -93,9 +93,8 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
 
   Future<void> _pickAndReadImages() async {
     final pickedImages = await _picker.pickMultiImage();
-    final topThreeImages = pickedImages.take(3).toList();
 
-    if (topThreeImages.isEmpty) return;
+    if (pickedImages.isEmpty) return;
     var processedSuccessfully = false;
     var rejectedImages = 0;
 
@@ -106,7 +105,7 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
     });
 
     try {
-      for (final image in topThreeImages) {
+      for (final image in pickedImages) {
         final inputImage = InputImage.fromFilePath(image.path);
         final recognizedText = await _textRecognizer.processImage(inputImage);
         final drafts = _parsePriceDrafts(recognizedText, image.name);
@@ -913,10 +912,10 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
                     ),
                     const SizedBox(height: 10),
                     const Text(
-                      'WhatsApp Channels do not provide an official public feed '
-                      'for apps to auto-download posts. Open the channel, save '
-                      'the latest 3 price-table pictures, then select them here '
-                      'to extract text for review and upload.',
+                      'Open the WhatsApp Channel, save the latest price-table '
+                      'pictures, then select them here to extract text for '
+                      'review and upload. WhatsApp Channels do not provide an '
+                      'official public feed for apps to auto-download posts.',
                     ),
                   ],
                 ),
@@ -932,7 +931,7 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
             _ActionButton(
               label: _autoUploadAfterImport
                   ? 'Select Pictures & Auto Upload'
-                  : 'Select Saved Top 3 Pictures',
+                  : 'Select Saved Pictures',
               icon: Icons.image_search_outlined,
               onPressed: _isBusy ? null : _pickAndReadImages,
             ),

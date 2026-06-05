@@ -2,15 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:smart_agri_price_tracker/core/services/auth_service.dart';
 import 'package:smart_agri_price_tracker/core/routing/app_router.dart';
+import 'package:smart_agri_price_tracker/core/services/firestore_service.dart';
 import 'package:smart_agri_price_tracker/core/services/notification_service.dart';
 
 class AdminDashboard extends StatelessWidget {
   final Map<String, dynamic> userData;
 
-  const AdminDashboard({
-    super.key,
-    required this.userData,
-  });
+  const AdminDashboard({super.key, required this.userData});
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +46,9 @@ class AdminDashboard extends StatelessWidget {
                       context: context,
                       builder: (context) => AlertDialog(
                         title: const Text('Admin Profile'),
-                        content: Text('Name: $name\nRole: Administrator\nEmail: ${userData['email'] ?? 'N/A'}'),
+                        content: Text(
+                          'Name: $name\nRole: Administrator\nEmail: ${userData['email'] ?? 'N/A'}',
+                        ),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(context),
@@ -64,7 +64,7 @@ class AdminDashboard extends StatelessWidget {
                     child: Text(
                       name[0].toUpperCase(),
                       style: TextStyle(
-                        color: theme.primaryColor, 
+                        color: theme.primaryColor,
                         fontWeight: FontWeight.bold,
                         fontSize: 24,
                       ),
@@ -72,95 +72,124 @@ class AdminDashboard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Hello, $name',
-                      style: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      'System Administrator',
-                      style: textTheme.bodyMedium?.copyWith(color: Colors.grey),
-                    ),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hello, $name',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'System Administrator',
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 32),
-            
+
             Text(
               'System Overview',
-              style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 16),
-            
-            // Stats Grid
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              childAspectRatio: 1.3,
-              children: [
-                _buildStatCard(
-                  'Total Users',
-                  'users',
-                  null,
-                  null,
-                  Icons.people_alt_rounded,
-                  Colors.blue,
-                  onTap: () => Navigator.pushNamed(context, AppRouter.manageUsers),
-                ),
-                _buildStatCard(
-                  'Farmers',
-                  'users',
-                  'role',
-                  'Farmer',
-                  Icons.agriculture_rounded,
-                  Colors.green,
-                  onTap: () => Navigator.pushNamed(context, AppRouter.manageUsers, arguments: {'role': 'Farmer'}),
-                ),
-                _buildStatCard(
-                  'Cooperatives',
-                  'users',
-                  'role',
-                  'Cooperative Officer',
-                  Icons.business_center_rounded,
-                  Colors.orange,
-                  onTap: () => Navigator.pushNamed(context, AppRouter.manageUsers, arguments: {'role': 'Cooperative Officer'}),
-                ),
-                _buildStatCard(
-                  'Pending Prices',
-                  'prices',
-                  'status',
-                  'pending',
-                  Icons.hourglass_empty_rounded,
-                  Colors.amber,
-                  onTap: () => Navigator.pushNamed(context, AppRouter.priceApproval),
-                ),
-                _buildStatCard(
-                  'Approved Prices',
-                  'prices',
-                  'status',
-                  'approved',
-                  Icons.verified_rounded,
-                  Colors.teal,
-                  onTap: () => Navigator.pushNamed(context, AppRouter.marketPrices),
-                ),
-                _buildStatCard(
-                  'Analytics',
-                  'products',
-                  null,
-                  null,
-                  Icons.analytics_rounded,
-                  Colors.indigo,
-                  onTap: () => Navigator.pushNamed(context, AppRouter.adminAnalytics),
-                ),
-              ],
+
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth >= 720 ? 3 : 2;
+                return GridView.count(
+                  crossAxisCount: columns,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 16,
+                  mainAxisExtent: 112,
+                  children: [
+                    _buildStatCard(
+                      'Total Users',
+                      'users',
+                      null,
+                      null,
+                      Icons.people_alt_rounded,
+                      Colors.blue,
+                      onTap: () =>
+                          Navigator.pushNamed(context, AppRouter.manageUsers),
+                    ),
+                    _buildStatCard(
+                      'Farmers',
+                      'users',
+                      'role',
+                      'Farmer',
+                      Icons.agriculture_rounded,
+                      Colors.green,
+                      onTap: () => Navigator.pushNamed(
+                        context,
+                        AppRouter.manageUsers,
+                        arguments: {'role': 'Farmer'},
+                      ),
+                    ),
+                    _buildStatCard(
+                      'Cooperatives',
+                      'users',
+                      'role',
+                      'Cooperative Officer',
+                      Icons.business_center_rounded,
+                      Colors.orange,
+                      onTap: () => Navigator.pushNamed(
+                        context,
+                        AppRouter.manageUsers,
+                        arguments: {'role': 'Cooperative Officer'},
+                      ),
+                    ),
+                    _buildStatCard(
+                      'Pending Prices',
+                      'prices',
+                      'status',
+                      'pending',
+                      Icons.hourglass_empty_rounded,
+                      Colors.amber,
+                      onTap: () =>
+                          Navigator.pushNamed(context, AppRouter.priceApproval),
+                    ),
+                    _buildStatCard(
+                      'Approved Prices',
+                      'prices',
+                      'status',
+                      'approved',
+                      Icons.verified_rounded,
+                      Colors.teal,
+                      onTap: () =>
+                          Navigator.pushNamed(context, AppRouter.marketPrices),
+                    ),
+                    _buildStatCard(
+                      'Analytics',
+                      'products',
+                      null,
+                      null,
+                      Icons.analytics_rounded,
+                      Colors.indigo,
+                      onTap: () => Navigator.pushNamed(
+                        context,
+                        AppRouter.adminAnalytics,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
-            
+
             const SizedBox(height: 32),
             _buildQuickActions(context, theme),
           ],
@@ -170,7 +199,10 @@ class AdminDashboard extends StatelessWidget {
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.admin_panel_settings_outlined),
-            selectedIcon: Icon(Icons.admin_panel_settings, color: Color(0xFF2E7D32)),
+            selectedIcon: Icon(
+              Icons.admin_panel_settings,
+              color: Color(0xFF2E7D32),
+            ),
             label: 'Admin',
           ),
           NavigationDestination(
@@ -188,7 +220,9 @@ class AdminDashboard extends StatelessWidget {
             Navigator.pushNamed(context, AppRouter.manageUsers);
           } else if (index == 2) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Settings coming soon in next update.')),
+              const SnackBar(
+                content: Text('Settings coming soon in next update.'),
+              ),
             );
           }
         },
@@ -197,19 +231,23 @@ class AdminDashboard extends StatelessWidget {
   }
 
   Widget _buildStatCard(
-    String label, 
-    String? collection, 
-    String? field, 
-    dynamic value, 
-    IconData icon, 
-    Color color, 
-    {String? valueOverride, VoidCallback? onTap}
-  ) {
+    String label,
+    String? collection,
+    String? field,
+    dynamic value,
+    IconData icon,
+    Color color, {
+    String? valueOverride,
+    VoidCallback? onTap,
+  }) {
     return StreamBuilder<QuerySnapshot>(
-      stream: collection != null 
-          ? (field != null 
-              ? FirebaseFirestore.instance.collection(collection).where(field, isEqualTo: value).snapshots()
-              : FirebaseFirestore.instance.collection(collection).snapshots())
+      stream: collection != null
+          ? (field != null
+                ? FirebaseFirestore.instance
+                      .collection(collection)
+                      .where(field, isEqualTo: value)
+                      .snapshots()
+                : FirebaseFirestore.instance.collection(collection).snapshots())
           : null,
       builder: (context, snapshot) {
         String displayValue = '...';
@@ -221,42 +259,46 @@ class AdminDashboard extends StatelessWidget {
 
         return Card(
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(16),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Icon(icon, color: color, size: 24),
-                    Text(
-                      displayValue,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: color,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Icon(icon, color: color, size: 24),
+                      Text(
+                        displayValue,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey,
+                    ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
           ),
         );
       },
@@ -274,7 +316,10 @@ class AdminDashboard extends StatelessWidget {
         const SizedBox(height: 12),
         Card(
           child: ListTile(
-            leading: const Icon(Icons.check_circle_outline, color: Colors.green),
+            leading: const Icon(
+              Icons.check_circle_outline,
+              color: Colors.green,
+            ),
             title: const Text('Review Pending Prices'),
             subtitle: const Text('Verify submissions from market officers'),
             trailing: const Icon(Icons.chevron_right),
@@ -292,6 +337,18 @@ class AdminDashboard extends StatelessWidget {
         ),
         Card(
           child: ListTile(
+            leading: const Icon(
+              Icons.verified_user_outlined,
+              color: Colors.teal,
+            ),
+            title: const Text('Auto-approve ACE Cooperatives'),
+            subtitle: const Text('Approve trusted ACE cooperative accounts'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _autoApproveTrustedCooperatives(context),
+          ),
+        ),
+        Card(
+          child: ListTile(
             leading: const Icon(Icons.campaign_outlined, color: Colors.orange),
             title: const Text('Send Announcement'),
             subtitle: const Text('Broadcast market alerts to all users'),
@@ -301,6 +358,66 @@ class AdminDashboard extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  bool _isTrustedCooperative(Map<String, dynamic> data) {
+    final searchable = '${data['fullName'] ?? ''} ${data['email'] ?? ''}'
+        .toLowerCase();
+    return RegExp(r'(^|[^a-z])ace([^a-z]|$)').hasMatch(searchable);
+  }
+
+  Future<void> _autoApproveTrustedCooperatives(BuildContext context) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Checking trusted cooperatives...')),
+    );
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'Cooperative Officer')
+          .get();
+      var approvedCount = 0;
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        if (data['approved'] == true || !_isTrustedCooperative(data)) {
+          continue;
+        }
+
+        await FirestoreService().updateData('users', doc.id, {
+          'approved': true,
+          'approvalStatus': 'approved',
+          'trustedCooperative': true,
+          'approvedAutomatically': true,
+        });
+
+        await NotificationService().sendInAppNotification(
+          uid: doc.id,
+          title: 'Account Approved',
+          message:
+              'Your ACE cooperative account has been auto-approved as a trusted cooperative.',
+        );
+        approvedCount += 1;
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              approvedCount == 0
+                  ? 'No pending ACE cooperative accounts found.'
+                  : '$approvedCount ACE cooperative account(s) approved.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   void _showAnnouncementDialog(BuildContext context) {
@@ -316,7 +433,9 @@ class AdminDashboard extends StatelessWidget {
           children: [
             TextField(
               controller: titleController,
-              decoration: const InputDecoration(labelText: 'Title (e.g., Market Alert)'),
+              decoration: const InputDecoration(
+                labelText: 'Title (e.g., Market Alert)',
+              ),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -333,14 +452,17 @@ class AdminDashboard extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () async {
-              if (titleController.text.trim().isEmpty || messageController.text.trim().isEmpty) {
+              if (titleController.text.trim().isEmpty ||
+                  messageController.text.trim().isEmpty) {
                 return;
               }
               Navigator.pop(context);
-              
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sending broadcast...')));
-              
-              // We need to import NotificationService in the actual file. 
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Sending broadcast...')),
+              );
+
+              // We need to import NotificationService in the actual file.
               // We'll use the static instance.
               try {
                 await NotificationService().sendGlobalBroadcast(
@@ -348,11 +470,17 @@ class AdminDashboard extends StatelessWidget {
                   message: messageController.text.trim(),
                 );
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Broadcast sent to all users!')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Broadcast sent to all users!'),
+                    ),
+                  );
                 }
               } catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Error: $e')));
                 }
               }
             },

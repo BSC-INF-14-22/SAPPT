@@ -8,10 +8,7 @@ import 'package:smart_agri_price_tracker/features/shared/presentation/widgets/ma
 class FarmerDashboard extends StatelessWidget {
   final Map<String, dynamic> userData;
 
-  const FarmerDashboard({
-    super.key,
-    required this.userData,
-  });
+  const FarmerDashboard({super.key, required this.userData});
 
   @override
   Widget build(BuildContext context) {
@@ -57,35 +54,48 @@ class FarmerDashboard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _text(language, 'Welcome, $name', 'Takulandirani, $name'),
-                      style: textTheme.headlineMedium?.copyWith(
-                        color: theme.primaryColor,
-                        fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _text(
+                          language,
+                          'Welcome, $name',
+                          'Takulandirani, $name',
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.headlineMedium?.copyWith(
+                          color: theme.primaryColor,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on,
-                          size: 16,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          district,
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: Colors.grey[700],
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on,
+                            size: 16,
+                            color: Colors.grey,
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              district,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 12),
                 GestureDetector(
                   onTap: () =>
                       _showProfileDialog(context, name, userData, language),
@@ -115,43 +125,51 @@ class FarmerDashboard extends StatelessWidget {
             const SizedBox(height: 24),
 
             // Grid of Action Cards
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              childAspectRatio: 1.1,
-              children: [
-                _buildDashboardCard(
-                  context,
-                  _text(language, 'View Prices', 'Onani Mitengo'),
-                  Icons.monetization_on_outlined,
-                  Colors.green,
-                  () => Navigator.pushNamed(context, AppRouter.marketPrices),
-                ),
-                _buildDashboardCard(
-                  context,
-                  _text(language, 'Search Crops', 'Sakani Mbewu'),
-                  Icons.search_rounded,
-                  Colors.blue,
-                  () => Navigator.pushNamed(context, AppRouter.searchPrices),
-                ),
-                _buildDashboardCard(
-                  context,
-                  _text(language, 'Price Trends', 'Kusintha kwa Mitengo'),
-                  Icons.trending_up_rounded,
-                  Colors.orange,
-                  () => Navigator.pushNamed(context, AppRouter.priceTrends),
-                ),
-                _buildDashboardCard(
-                  context,
-                  _text(language, 'Notifications', 'Zidziwitso'),
-                  Icons.notifications_active_outlined,
-                  Colors.red,
-                  () => Navigator.pushNamed(context, AppRouter.notifications),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth >= 620 ? 3 : 2;
+                return GridView.count(
+                  crossAxisCount: columns,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 16,
+                  mainAxisExtent: 150,
+                  children: [
+                    _buildDashboardCard(
+                      context,
+                      _text(language, 'View Prices', 'Onani Mitengo'),
+                      Icons.monetization_on_outlined,
+                      Colors.green,
+                      () =>
+                          Navigator.pushNamed(context, AppRouter.marketPrices),
+                    ),
+                    _buildDashboardCard(
+                      context,
+                      _text(language, 'Search Crops', 'Sakani Mbewu'),
+                      Icons.search_rounded,
+                      Colors.blue,
+                      () =>
+                          Navigator.pushNamed(context, AppRouter.searchPrices),
+                    ),
+                    _buildDashboardCard(
+                      context,
+                      _text(language, 'Price Trends', 'Kusintha kwa Mitengo'),
+                      Icons.trending_up_rounded,
+                      Colors.orange,
+                      () => Navigator.pushNamed(context, AppRouter.priceTrends),
+                    ),
+                    _buildDashboardCard(
+                      context,
+                      _text(language, 'Notifications', 'Zidziwitso'),
+                      Icons.notifications_active_outlined,
+                      Colors.red,
+                      () =>
+                          Navigator.pushNamed(context, AppRouter.notifications),
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
 
@@ -251,6 +269,8 @@ class FarmerDashboard extends StatelessWidget {
               Text(
                 title,
                 textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,

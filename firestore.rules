@@ -43,9 +43,27 @@ service cloud.firestore {
     
     match /users/{userId} {
       // Anyone can create their profile when they first register
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      // Users can only view and edit their own profile data
-      allow read, update: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && (
+          (
+            request.resource.data.role == 'Farmer'
+            && request.resource.data.approved == true
+            && request.resource.data.approvalStatus == 'approved'
+          )
+          || (
+            request.resource.data.role == 'Cooperative Officer'
+            && request.resource.data.approved == false
+            && request.resource.data.approvalStatus == 'pending'
+          )
+        );
+      // Users can view their own profile, but cannot promote or approve themselves.
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.approved == resource.data.approved
+        && request.resource.data.approvalStatus == resource.data.approvalStatus;
     }
 
     // ==========================================

@@ -39,7 +39,8 @@ class _LoginPageState extends State<LoginPage> {
     try {
       // 1. Check if identifier is a phone number, allowing spaces/dashes.
       final phoneDigits = identifier.replaceAll(RegExp(r'\D'), '');
-      bool isPhone = !identifier.contains('@') &&
+      bool isPhone =
+          !identifier.contains('@') &&
           RegExp(r'^[\+\d\s\-\(\)]{7,24}$').hasMatch(identifier) &&
           phoneDigits.length >= 7 &&
           phoneDigits.length <= 15;
@@ -83,6 +84,16 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       final userData = await FirestoreService().getUserByUid(uid);
+      if (userData != null && userData['isDisabled'] == true) {
+        await AuthService().signOut();
+        throw Exception(
+          _text(
+            'Your account has been disabled. Contact an administrator.',
+            'Akaunti yanu yayimitsidwa. Lumikizanani ndi admin.',
+          ),
+        );
+      }
+
       if (userData != null && userData['role'] == 'Cooperative Officer') {
         final approved = userData['approved'] == true;
         if (!approved) {

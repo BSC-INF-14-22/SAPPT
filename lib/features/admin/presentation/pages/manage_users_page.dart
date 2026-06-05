@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:smart_agri_price_tracker/core/services/auth_service.dart';
 import 'package:smart_agri_price_tracker/core/services/firestore_service.dart';
 import 'package:smart_agri_price_tracker/core/services/notification_service.dart';
 
@@ -108,6 +109,77 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
             ),
           ),
         );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _setUserRole(
+    String docId,
+    String role, {
+    required String userName,
+  }) async {
+    final currentUid = AuthService().currentUser?.uid;
+    if (docId == currentUid && role != 'Admin') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You cannot remove your own admin access.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(role == 'Admin' ? 'Make Admin?' : 'Remove Admin?'),
+        content: Text(
+          role == 'Admin'
+              ? 'Give $userName administrator access?'
+              : 'Move $userName back to Farmer access?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      await FirestoreService().updateData('users', docId, {
+        'role': role,
+        'approved': true,
+        'approvalStatus': 'approved',
+        if (role == 'Admin') 'adminManaged': true,
+      });
+
+      await NotificationService().sendInAppNotification(
+        uid: docId,
+        title: role == 'Admin'
+            ? 'Admin Access Granted'
+            : 'Admin Access Removed',
+        message: role == 'Admin'
+            ? 'An administrator granted your account admin access.'
+            : 'Your account has been moved back to Farmer access.',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$userName updated to $role.')));
       }
     } catch (e) {
       if (mounted) {
@@ -322,6 +394,10 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
               _setApprovalStatus(docId, true);
             } else if (value == 'reject') {
               _setApprovalStatus(docId, false);
+            } else if (value == 'make_admin') {
+              _setUserRole(docId, 'Admin', userName: name.toString());
+            } else if (value == 'remove_admin') {
+              _setUserRole(docId, 'Farmer', userName: name.toString());
             }
           },
           itemBuilder: (context) {
@@ -362,6 +438,25 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                 ),
               );
             }
+
+            items.add(
+              PopupMenuItem(
+                value: role == 'Admin' ? 'remove_admin' : 'make_admin',
+                child: Row(
+                  children: [
+                    Icon(
+                      role == 'Admin'
+                          ? Icons.admin_panel_settings_outlined
+                          : Icons.admin_panel_settings,
+                      color: role == 'Admin' ? Colors.orange : Colors.red,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(role == 'Admin' ? 'Remove Admin' : 'Make Admin'),
+                  ],
+                ),
+              ),
+            );
 
             items.add(
               const PopupMenuItem(

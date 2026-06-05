@@ -29,7 +29,7 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
-  final List<String> _roles = ['Farmer', 'Cooperative Officer', 'Admin'];
+  final List<String> _roles = ['Farmer', 'Cooperative Officer'];
   final List<String> _districts = [
     'Lilongwe',
     'Blantyre',
@@ -56,8 +56,6 @@ class _RegisterPageState extends State<RegisterPage> {
         return _text('Farmer', 'Mlimi');
       case 'Cooperative Officer':
         return _text('Cooperative Officer', 'Wogwira Ntchito ku Cooperative');
-      case 'Admin':
-        return _text('Admin', 'Admin');
       default:
         return role;
     }
@@ -201,9 +199,7 @@ class _RegisterPageState extends State<RegisterPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_text('Create Account', 'Pangani Akaunti')),
-      ),
+      appBar: AppBar(title: Text(_text('Create Account', 'Pangani Akaunti'))),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -408,9 +404,7 @@ class _RegisterPageState extends State<RegisterPage> {
                         ? const CircularProgressIndicator(color: Colors.white)
                         : Text(
                             _text('REGISTER', 'LEMBETSANI'),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                   ),
                   const SizedBox(height: 16),

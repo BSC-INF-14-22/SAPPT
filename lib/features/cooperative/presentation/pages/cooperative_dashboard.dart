@@ -43,31 +43,40 @@ class CooperativeDashboard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Welcome, $name',
-                      style: textTheme.headlineMedium?.copyWith(
-                        color: theme.primaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.badge, size: 16, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Cooperative Officer - $district',
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: Colors.grey[700],
-                          ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Welcome, $name',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.headlineMedium?.copyWith(
+                          color: theme.primaryColor,
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.badge, size: 16, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              'Cooperative Officer - $district',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 12),
                 GestureDetector(
                   onTap: () => _showProfileDialog(context, name, userData),
                   child: CircleAvatar(
@@ -89,15 +98,15 @@ class CooperativeDashboard extends StatelessWidget {
             // Grid of Action Cards
             LayoutBuilder(
               builder: (context, constraints) {
-                final cardSize = (constraints.maxWidth - 16) / 2;
+                final columns = constraints.maxWidth >= 620 ? 3 : 2;
                 return GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
+                    crossAxisCount: columns,
                     crossAxisSpacing: 16,
                     mainAxisSpacing: 16,
-                    mainAxisExtent: cardSize,
+                    mainAxisExtent: 150,
                   ),
                   itemCount: 5,
                   itemBuilder: (context, index) {
@@ -271,6 +280,8 @@ class CooperativeDashboard extends StatelessWidget {
                   Text(
                     title,
                     textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,

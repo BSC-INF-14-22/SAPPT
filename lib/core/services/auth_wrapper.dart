@@ -47,6 +47,23 @@ class AuthWrapper extends StatelessWidget {
               final userData = roleSnapshot.data!;
               final role = userData['role'];
 
+              if (userData['isDisabled'] == true) {
+                return _buildErrorScreen(
+                  context,
+                  'Your account has been disabled. Contact an administrator.',
+                  showLogout: true,
+                );
+              }
+
+              if (role == 'Cooperative Officer' &&
+                  userData['approved'] != true) {
+                return _buildErrorScreen(
+                  context,
+                  'Your cooperative account is pending admin approval.',
+                  showLogout: true,
+                );
+              }
+
               switch (role) {
                 case 'Farmer':
                   return FarmerDashboard(userData: userData);

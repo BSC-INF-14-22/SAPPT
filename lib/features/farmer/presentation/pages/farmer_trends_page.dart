@@ -53,7 +53,7 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
             padding: const EdgeInsets.all(20),
             children: [
               DropdownButtonFormField<String>(
-                value: _selectedCrop,
+                initialValue: _selectedCrop,
                 decoration: const InputDecoration(
                   labelText: 'Crop',
                   border: OutlineInputBorder(),
@@ -116,11 +116,7 @@ class _FarmerTrendsPageState extends State<FarmerTrendsPage> {
               Icons.trending_up,
             ),
             _metric(
-              _text(
-                language,
-                'Predicted future price',
-                'Mtengo woyembekezeka',
-              ),
+              _text(language, 'Predicted future price', 'Mtengo woyembekezeka'),
               '${currencyFormat.format(insight.predictedNextPrice)}/${insight.unit}',
               Icons.insights,
             ),
