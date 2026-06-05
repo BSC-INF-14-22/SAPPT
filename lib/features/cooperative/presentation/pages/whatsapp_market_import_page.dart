@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:smart_agri_price_tracker/core/routing/app_router.dart';
@@ -23,19 +22,24 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
 
   final ImagePicker _picker = ImagePicker();
   final TextRecognizer _textRecognizer = TextRecognizer();
-  final List<_OcrResult> _results = [];
   final List<_PriceDraft> _drafts = [];
+  static const String _defaultUnit = 'kg';
 
   bool _isProcessing = false;
   bool _isUploading = false;
   bool _autoUploadAfterImport = true;
+  bool _hasSuccessfulUpload = false;
 
-  final List<String> _units = const [
-    'kg',
-    '50kg bag',
-    'Pail (Small)',
-    'Pail (Large)',
-  ];
+  bool get _isBusy => _isProcessing || _isUploading;
+  bool get _hasUploadableDrafts => _drafts.any(
+    (draft) =>
+        draft.selected &&
+        draft.date.trim().isNotEmpty &&
+        draft.cropName.trim().isNotEmpty &&
+        draft.price.trim().isNotEmpty &&
+        _parseDraftDate(draft.date.trim()) != null &&
+        _parseNumber(draft.price.trim()) != null,
+  );
 
   final List<String> _districts = const [
     'Chitipa',
@@ -93,10 +97,11 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
 
     if (topThreeImages.isEmpty) return;
     var processedSuccessfully = false;
+    var rejectedImages = 0;
 
     setState(() {
       _isProcessing = true;
-      _results.clear();
+      _hasSuccessfulUpload = false;
       _drafts.clear();
     });
 
@@ -104,13 +109,16 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
       for (final image in topThreeImages) {
         final inputImage = InputImage.fromFilePath(image.path);
         final recognizedText = await _textRecognizer.processImage(inputImage);
-        _results.add(
-          _OcrResult(fileName: image.name, text: recognizedText.text.trim()),
-        );
-        _drafts.addAll(_parsePriceDrafts(recognizedText.text, image.name));
+        final drafts = _parsePriceDrafts(recognizedText, image.name);
+        if (drafts.isEmpty) {
+          rejectedImages += 1;
+          continue;
+        }
+
+        _drafts.addAll(drafts);
       }
 
-      processedSuccessfully = true;
+      processedSuccessfully = _drafts.isNotEmpty;
 
       if (mounted) {
         setState(() {});
@@ -127,30 +135,36 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
       }
     }
 
+    if (rejectedImages > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$rejectedImages image(s) rejected because no valid price table was detected.',
+          ),
+        ),
+      );
+    }
+
     if (processedSuccessfully && mounted && _autoUploadAfterImport) {
       await _uploadSelectedDrafts(
         emptyMessage: 'No valid price rows were detected for upload.',
+        clearAfterSuccess: true,
       );
     }
   }
 
-  Future<void> _copyAllText() async {
-    final text = _results
-        .map((result) => '${result.fileName}\n${result.text}')
-        .join('\n\n---\n\n');
+  List<_PriceDraft> _parsePriceDrafts(
+    RecognizedText recognizedText,
+    String fileName,
+  ) {
+    final layoutDrafts = _parseLayoutTablePriceDrafts(recognizedText, fileName);
+    if (layoutDrafts.isNotEmpty) return layoutDrafts;
 
-    if (text.trim().isEmpty) return;
+    final text = recognizedText.text;
+    final tableDrafts = _parseTablePriceDrafts(text, fileName);
+    if (tableDrafts.isNotEmpty) return tableDrafts;
 
-    await Clipboard.setData(ClipboardData(text: text));
-
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Extracted text copied.')));
-    }
-  }
-
-  List<_PriceDraft> _parsePriceDrafts(String text, String fileName) {
+    final date = _extractDate(text);
     final lines = text
         .split('\n')
         .map((line) => line.trim())
@@ -158,19 +172,22 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
 
     return lines
         .map((line) {
+          if (date == null) return null;
+
           final price = _extractPrice(line);
           if (price == null) return null;
 
-          final cropName = _extractCropName(line);
+          final district = _detectDistrict(line);
+          if (district == null) return null;
+
+          final cropName = _extractCropName(line, district, price);
           if (cropName.length < 2) return null;
 
-          final district = _detectDistrict(line) ?? 'Lilongwe';
-          final unit = _detectUnit(line);
-
           return _PriceDraft(
+            date: date,
             cropName: cropName,
             price: price,
-            unit: unit,
+            unit: _defaultUnit,
             marketName: district,
             district: district,
             sourceImage: fileName,
@@ -179,6 +196,322 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
         })
         .whereType<_PriceDraft>()
         .toList();
+  }
+
+  List<_PriceDraft> _parseLayoutTablePriceDrafts(
+    RecognizedText recognizedText,
+    String fileName,
+  ) {
+    final date = _extractDate(recognizedText.text);
+    if (date == null) return [];
+
+    final ocrLines = <_OcrLine>[];
+    for (final block in recognizedText.blocks) {
+      for (final line in block.lines) {
+        final text = line.text.trim();
+        final box = line.boundingBox;
+        if (text.isEmpty) continue;
+        ocrLines.add(_OcrLine(text: text, box: box));
+      }
+    }
+    if (ocrLines.isEmpty) return [];
+
+    ocrLines.sort((a, b) {
+      final yCompare = a.centerY.compareTo(b.centerY);
+      return yCompare == 0 ? a.centerX.compareTo(b.centerX) : yCompare;
+    });
+
+    final footerY = ocrLines
+        .where((line) => line.text.toLowerCase().contains('minimum farm gate'))
+        .map((line) => line.box.top)
+        .fold<double?>(
+          null,
+          (current, y) => current == null
+              ? y
+              : current < y
+              ? current
+              : y,
+        );
+
+    final commodityHeader = ocrLines
+        .where((line) => line.text.toLowerCase().trim().contains('commodity'))
+        .cast<_OcrLine?>()
+        .firstWhere((line) => line != null, orElse: () => null);
+    if (commodityHeader == null) return [];
+
+    final headerY = commodityHeader.centerY;
+    final locationHeaders =
+        ocrLines
+            .where((line) {
+              if (footerY != null && line.centerY >= footerY) return false;
+              if ((line.centerY - headerY).abs() > 80) return false;
+              final district = _detectDistrict(line.text);
+              return district != null && line.centerX > commodityHeader.centerX;
+            })
+            .map((line) => (district: _detectDistrict(line.text)!, line: line))
+            .toList()
+          ..sort((a, b) => a.line.centerX.compareTo(b.line.centerX));
+    if (locationHeaders.isEmpty) return [];
+
+    final firstLocationX = locationHeaders.first.line.box.left;
+    final tableLines = ocrLines.where((line) {
+      if (line.centerY <= headerY + 20) return false;
+      if (footerY != null && line.centerY >= footerY) return false;
+      return true;
+    }).toList();
+
+    final commodityLines = tableLines.where((line) {
+      if (line.box.left >= firstLocationX) return false;
+      if (_extractAmountCells(line.text).isNotEmpty) return false;
+      if (_isIgnoredTableLine(
+        line.text,
+        locationHeaders.map((h) => h.district).toList(),
+      )) {
+        return false;
+      }
+      final commodity = _extractTableCommodity(
+        line.text,
+        locationHeaders.map((h) => h.district).toList(),
+      );
+      return commodity.isNotEmpty;
+    }).toList()..sort((a, b) => a.centerY.compareTo(b.centerY));
+    if (commodityLines.isEmpty) return [];
+
+    final amountLines = tableLines
+        .where((line) => line.box.left >= firstLocationX - 20)
+        .toList();
+    final drafts = <_PriceDraft>[];
+
+    for (final commodityLine in commodityLines) {
+      final commodity = _extractTableCommodity(
+        commodityLine.text,
+        locationHeaders.map((h) => h.district).toList(),
+      );
+      if (commodity.isEmpty) continue;
+
+      for (final header in locationHeaders) {
+        final cell = _bestAmountCellForColumn(
+          amountLines,
+          header.line.centerX,
+          commodityLine.centerY,
+        );
+        final amount = cell == null ? null : _amountCellValue(cell.text);
+
+        drafts.add(
+          _PriceDraft(
+            date: date,
+            cropName: commodity,
+            price: amount?.toString() ?? 'No price',
+            unit: _defaultUnit,
+            marketName: header.district,
+            district: header.district,
+            sourceImage: fileName,
+            sourceLine:
+                '$commodity, ${header.district}, ${amount ?? 'No price'}',
+            selected: amount != null,
+          ),
+        );
+      }
+    }
+
+    return drafts;
+  }
+
+  _OcrLine? _bestAmountCellForColumn(
+    List<_OcrLine> lines,
+    double columnX,
+    double rowY,
+  ) {
+    final candidates = lines.where((line) {
+      if ((line.centerY - rowY).abs() > 45) return false;
+      if ((line.centerX - columnX).abs() > 110) return false;
+      return _amountCellValue(line.text) != null || _isNoPriceCell(line.text);
+    }).toList();
+
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) {
+      final aScore = (a.centerY - rowY).abs() + (a.centerX - columnX).abs();
+      final bScore = (b.centerY - rowY).abs() + (b.centerX - columnX).abs();
+      return aScore.compareTo(bScore);
+    });
+    return candidates.first;
+  }
+
+  int? _amountCellValue(String text) {
+    final cells = _extractAmountCells(text);
+    for (final cell in cells) {
+      if (cell != null) return cell;
+    }
+    return null;
+  }
+
+  bool _isNoPriceCell(String text) {
+    return RegExp(r'^\s*[-\u2013\u2014]\s*$').hasMatch(text);
+  }
+
+  List<_PriceDraft> _parseTablePriceDrafts(String text, String fileName) {
+    final date = _extractDate(text);
+    if (date == null) return [];
+
+    final tableText = text
+        .split(RegExp(r'minimum\s+farm\s+gate\s+prices', caseSensitive: false))
+        .first;
+
+    final locations =
+        _districts
+            .map((district) {
+              final match = RegExp(
+                '\\b${RegExp.escape(district)}\\b',
+                caseSensitive: false,
+              ).firstMatch(tableText);
+              return match == null
+                  ? null
+                  : (district: district, index: match.start);
+            })
+            .whereType<({String district, int index})>()
+            .toList()
+          ..sort((a, b) => a.index.compareTo(b.index));
+    final orderedLocations = locations
+        .map((location) => location.district)
+        .toList();
+    if (orderedLocations.isEmpty) return [];
+
+    final drafts = <_PriceDraft>[];
+    String? pendingCommodity;
+    final pendingAmountCells = <int?>[];
+
+    void addDrafts(String commodity, List<int?> amountCells) {
+      for (
+        var index = 0;
+        index < amountCells.length && index < orderedLocations.length;
+        index++
+      ) {
+        final amount = amountCells[index];
+
+        drafts.add(
+          _PriceDraft(
+            date: date,
+            cropName: commodity,
+            price: amount?.toString() ?? 'No price',
+            unit: _defaultUnit,
+            marketName: orderedLocations[index],
+            district: orderedLocations[index],
+            sourceImage: fileName,
+            sourceLine:
+                '$commodity, ${orderedLocations[index]}, ${amount ?? 'No price'}',
+            selected: amount != null,
+          ),
+        );
+      }
+    }
+
+    final lines = tableText
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty);
+
+    for (final line in lines) {
+      if (_isIgnoredTableLine(line, orderedLocations)) continue;
+
+      final amountCells = _extractAmountCells(line);
+      final commodity = _extractTableCommodity(line, orderedLocations);
+
+      if (amountCells.isEmpty) {
+        if (commodity.isNotEmpty) {
+          pendingCommodity = commodity;
+          pendingAmountCells.clear();
+        }
+        continue;
+      }
+
+      if (commodity.isNotEmpty) {
+        pendingCommodity = commodity;
+        pendingAmountCells
+          ..clear()
+          ..addAll(amountCells);
+      } else if (pendingCommodity != null) {
+        pendingAmountCells.addAll(amountCells);
+      }
+
+      if (pendingCommodity == null || pendingAmountCells.isEmpty) continue;
+
+      if (pendingAmountCells.length >= orderedLocations.length) {
+        addDrafts(pendingCommodity, pendingAmountCells);
+        pendingCommodity = null;
+        pendingAmountCells.clear();
+      }
+    }
+
+    return drafts;
+  }
+
+  bool _isIgnoredTableLine(String line, List<String> locations) {
+    final lower = line.toLowerCase();
+    if (_extractDate(line) != null) return true;
+    if (lower.contains('ace prices')) return true;
+    if (lower.contains('domestic market')) return true;
+    if (lower.contains('indicative')) return true;
+    if (lower.contains('mwk')) return true;
+    if (lower.contains('commodity')) return true;
+    if (lower.contains('minimum farm gate')) return true;
+    if (lower.contains('aceafrica')) return true;
+    if (lower.contains('receiving price updates')) return true;
+
+    return locations.any((location) => lower == location.toLowerCase());
+  }
+
+  List<int?> _extractAmountCells(String line) {
+    if (_extractDate(line) != null) return [];
+
+    return RegExp(
+      r'\b\d[\d,]*\b|(?<!\w)[-\u2013\u2014](?!\w)',
+    ).allMatches(line).map((match) {
+      final value = match.group(0);
+      if (value == '-') return null;
+
+      final number = _parseNumber(value);
+      return number != null && number >= 50 ? number : null;
+    }).toList();
+  }
+
+  String _extractTableCommodity(String line, List<String> locations) {
+    var commodity = line
+        .replaceAll(RegExp(r'\b\d[\d,]*\b'), ' ')
+        .replaceAll(RegExp(r'[-\u2013\u2014]'), ' ')
+        .replaceAll(RegExp(r'[:|,;]'), ' ');
+
+    for (final location in locations) {
+      commodity = commodity.replaceAll(
+        RegExp('\\b${RegExp.escape(location)}\\b', caseSensitive: false),
+        ' ',
+      );
+    }
+
+    commodity = commodity
+        .replaceAll(
+          RegExp(
+            r'\b(commodity|market|date|amount|price|prices|mwk|kg|dap)\b',
+            caseSensitive: false,
+          ),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (commodity.isEmpty) return '';
+    return _titleCase(commodity);
+  }
+
+  String _titleCase(String value) {
+    return value
+        .split(' ')
+        .where((part) => part.trim().isNotEmpty)
+        .map(
+          (part) => part.isEmpty
+              ? part
+              : '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}',
+        )
+        .join(' ');
   }
 
   String? _extractPrice(String line) {
@@ -212,43 +545,118 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
     return int.tryParse(value.replaceAll(',', ''));
   }
 
-  String _extractCropName(String line) {
-    final firstNumber = RegExp(r'\d').firstMatch(line);
-    final beforePrice = firstNumber == null
-        ? line
-        : line.substring(0, firstNumber.start);
+  String? _extractDate(String line) {
+    final numericMatch = RegExp(
+      r'\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b',
+    ).firstMatch(line);
+    if (numericMatch != null) {
+      final day = numericMatch.group(1)!.padLeft(2, '0');
+      final month = numericMatch.group(2)!.padLeft(2, '0');
+      final yearText = numericMatch.group(3)!;
+      final year = yearText.length == 2 ? yearText : yearText.substring(2);
 
-    var crop = beforePrice
+      return '$day/$month/$year';
+    }
+
+    final wordMatch = RegExp(
+      r'\b(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{2,4})\b',
+      caseSensitive: false,
+    ).firstMatch(line);
+    if (wordMatch == null) return null;
+
+    final month = _monthNumber(wordMatch.group(2));
+    if (month == null) return null;
+
+    final day = wordMatch.group(1)!.padLeft(2, '0');
+    final yearText = wordMatch.group(3)!;
+    final year = yearText.length == 2 ? yearText : yearText.substring(2);
+
+    return '$day/$month/$year';
+  }
+
+  String? _monthNumber(String? value) {
+    final month = value?.toLowerCase();
+    const months = {
+      'jan': '01',
+      'january': '01',
+      'feb': '02',
+      'february': '02',
+      'mar': '03',
+      'march': '03',
+      'apr': '04',
+      'april': '04',
+      'may': '05',
+      'jun': '06',
+      'june': '06',
+      'jul': '07',
+      'july': '07',
+      'aug': '08',
+      'august': '08',
+      'sep': '09',
+      'sept': '09',
+      'september': '09',
+      'oct': '10',
+      'october': '10',
+      'nov': '11',
+      'november': '11',
+      'dec': '12',
+      'december': '12',
+    };
+
+    return months[month];
+  }
+
+  DateTime? _parseDraftDate(String value) {
+    final match = RegExp(
+      r'^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$',
+    ).firstMatch(value);
+    if (match == null) return null;
+
+    final day = int.tryParse(match.group(1)!);
+    final month = int.tryParse(match.group(2)!);
+    final yearText = match.group(3)!;
+    final year = int.tryParse(yearText.length == 2 ? '20$yearText' : yearText);
+    if (day == null || month == null || year == null) return null;
+
+    final date = DateTime(year, month, day);
+    if (date.day != day || date.month != month || date.year != year) {
+      return null;
+    }
+    return date;
+  }
+
+  String _extractCropName(String line, String district, String price) {
+    var crop = line
+        .replaceAll(RegExp(r'\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b'), ' ')
+        .replaceAll(
+          RegExp('\\b${RegExp.escape(district)}\\b', caseSensitive: false),
+          ' ',
+        )
+        .replaceAll(RegExp('\\b${RegExp.escape(price)}\\b'), ' ')
+        .replaceAll(
+          RegExp('\\b${RegExp.escape(price.replaceAll(',', ''))}\\b'),
+          ' ',
+        )
         .replaceAll(
           RegExp(r'\b(MWK|MK|K|price|prices|in|per)\b', caseSensitive: false),
           ' ',
         )
         .replaceAll(RegExp(r'[:|,;]'), ' ');
 
-    for (final district in _districts) {
-      crop = crop.replaceAll(
-        RegExp('\\b$district\\b', caseSensitive: false),
-        ' ',
-      );
-    }
-
     crop = crop
         .replaceAll(
-          RegExp(r'\b(kg|bag|pail|small|large)\b', caseSensitive: false),
+          RegExp(
+            r'\b(kg|bag|pail|small|large|market|date|commodity|location|amount)\b',
+            caseSensitive: false,
+          ),
           ' ',
         )
+        .replaceAll(RegExp(r'\d[\d,]*'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
     if (crop.isEmpty) return '';
-    return crop
-        .split(' ')
-        .map(
-          (part) => part.isEmpty
-              ? part
-              : '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}',
-        )
-        .join(' ');
+    return _titleCase(crop);
   }
 
   String? _detectDistrict(String line) {
@@ -260,14 +668,6 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
     return null;
   }
 
-  String _detectUnit(String line) {
-    final lower = line.toLowerCase();
-    if (lower.contains('50kg')) return '50kg bag';
-    if (lower.contains('large pail')) return 'Pail (Large)';
-    if (lower.contains('small pail')) return 'Pail (Small)';
-    return 'kg';
-  }
-
   String _slugify(String value) {
     final slug = value
         .trim()
@@ -277,15 +677,35 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
     return slug.isEmpty ? 'unknown' : slug;
   }
 
+  String _priceDocumentId({
+    required String userId,
+    required String cropName,
+    required String district,
+    required int price,
+  }) {
+    return _slugify('$userId $cropName $district $price');
+  }
+
+  void _clearDetectedRows() {
+    if (_isBusy) return;
+    setState(() {
+      _drafts.clear();
+      _hasSuccessfulUpload = false;
+    });
+  }
+
   Future<void> _uploadSelectedDrafts({
     String emptyMessage = 'Select at least one valid price row.',
+    bool clearAfterSuccess = false,
   }) async {
     final selectedDrafts = _drafts
         .where(
           (draft) =>
               draft.selected &&
+              draft.date.trim().isNotEmpty &&
               draft.cropName.trim().isNotEmpty &&
               draft.price.trim().isNotEmpty &&
+              _parseDraftDate(draft.date.trim()) != null &&
               _parseNumber(draft.price.trim()) != null,
         )
         .toList();
@@ -310,6 +730,8 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
           (userData?['fullName'] ?? user.displayName ?? 'Cooperative Officer')
               .toString()
               .trim();
+      var uploadedCount = 0;
+      var alreadyUploadedCount = 0;
 
       for (final draft in selectedDrafts) {
         final cropName = draft.cropName.trim();
@@ -319,6 +741,8 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
         final productId = _slugify(cropName);
         final marketId = _slugify('$marketName ${draft.district}');
         final price = _parseNumber(draft.price.trim())!;
+        final priceDate = _parseDraftDate(draft.date.trim())!;
+        final priceTimestamp = Timestamp.fromDate(priceDate);
 
         await FirebaseFirestore.instance
             .collection('products')
@@ -355,7 +779,18 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
               'updatedAt': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
 
-        await FirestoreService().addData('prices', {
+        final priceRef = FirebaseFirestore.instance
+            .collection('prices')
+            .doc(
+              _priceDocumentId(
+                userId: user.uid,
+                cropName: cropName,
+                district: draft.district,
+                price: price,
+              ),
+            );
+
+        final priceData = {
           'cropName': cropName,
           'productName': cropName,
           'price': price,
@@ -364,6 +799,8 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
           'marketName': marketName,
           'marketId': marketId,
           'district': draft.district,
+          'priceDate': priceTimestamp,
+          'priceDateText': draft.date.trim(),
           'notes':
               'Auto-imported from WhatsApp Channel OCR. Source image: ${draft.sourceImage}',
           'status': 'pending',
@@ -376,21 +813,52 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
           'sourceUrl': _channelUri.toString(),
           'sourceImage': draft.sourceImage,
           'sourceRawText': draft.sourceLine,
-          'submittedAt': FieldValue.serverTimestamp(),
+          'submittedAt': priceTimestamp,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
-        });
+        };
+
+        final matchingPrice = await FirebaseFirestore.instance
+            .collection('prices')
+            .where('uploadedBy', isEqualTo: user.uid)
+            .where('cropName', isEqualTo: cropName)
+            .where('district', isEqualTo: draft.district)
+            .where('price', isEqualTo: price)
+            .limit(1)
+            .get();
+
+        if (matchingPrice.docs.isNotEmpty) {
+          alreadyUploadedCount += 1;
+          continue;
+        }
+
+        await priceRef.set(priceData, SetOptions(merge: true));
+        uploadedCount += 1;
       }
 
       if (mounted) {
         for (final draft in selectedDrafts) {
           draft.selected = false;
         }
+        _hasSuccessfulUpload = uploadedCount > 0 || alreadyUploadedCount > 0;
+        final shouldClearRows =
+            clearAfterSuccess ||
+            (uploadedCount == 0 && alreadyUploadedCount > 0);
+        if (shouldClearRows) {
+          _drafts.clear();
+        }
+
+        final message = uploadedCount == 0 && alreadyUploadedCount > 0
+            ? '$alreadyUploadedCount price(s) already uploaded.'
+            : alreadyUploadedCount > 0
+            ? '$uploadedCount price(s) uploaded, $alreadyUploadedCount already uploaded.'
+            : '$uploadedCount price(s) uploaded.';
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${selectedDrafts.length} price(s) uploaded.'),
-            backgroundColor: Colors.green,
+            content: Text(message),
+            backgroundColor: uploadedCount == 0 ? Colors.orange : Colors.green,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -458,7 +926,7 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
             _ActionButton(
               label: 'Open WhatsApp Channel',
               icon: Icons.chat_outlined,
-              onPressed: _openChannel,
+              onPressed: _isBusy ? null : _openChannel,
             ),
             const SizedBox(height: 12),
             _ActionButton(
@@ -466,7 +934,7 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
                   ? 'Select Pictures & Auto Upload'
                   : 'Select Saved Top 3 Pictures',
               icon: Icons.image_search_outlined,
-              onPressed: _isProcessing ? null : _pickAndReadImages,
+              onPressed: _isBusy ? null : _pickAndReadImages,
             ),
             const SizedBox(height: 8),
             SwitchListTile(
@@ -484,41 +952,61 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
             _ActionButton(
               label: 'Go to Upload Prices',
               icon: Icons.cloud_upload_outlined,
-              onPressed: () =>
-                  Navigator.pushNamed(context, AppRouter.uploadPrice),
+              onPressed: _isBusy
+                  ? null
+                  : () => Navigator.pushNamed(context, AppRouter.uploadPrice),
             ),
             const SizedBox(height: 24),
+            if (_isUploading) ...[
+              Card(
+                color: Colors.green.withAlpha(18),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Automatically uploading detected prices...',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             if (_isProcessing)
               const Center(child: CircularProgressIndicator())
-            else if (_results.isEmpty)
-              const Text('No pictures processed yet.')
-            else ...[
+            else if (_hasSuccessfulUpload && _drafts.isEmpty)
+              const Text('Prices are already uploaded.')
+            else if (_drafts.isEmpty)
+              const Text('No pictures processed yet.'),
+            if (_drafts.isNotEmpty) ...[
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Extracted Text',
+                    'Detected Price Rows',
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   TextButton.icon(
-                    onPressed: _copyAllText,
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Copy All'),
+                    onPressed: _isBusy ? null : _clearDetectedRows,
+                    icon: const Icon(Icons.clear_all),
+                    label: const Text('Clear'),
                   ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              for (final result in _results) _OcrResultCard(result: result),
-            ],
-            if (_drafts.isNotEmpty) ...[
-              const SizedBox(height: 20),
-              Text(
-                'Detected Price Rows',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
               ),
               const SizedBox(height: 8),
               Text(
@@ -530,8 +1018,7 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
               for (final draft in _drafts)
                 _PriceDraftCard(
                   draft: draft,
-                  units: _units,
-                  districts: _districts,
+                  enabled: !_isBusy,
                   onChanged: () => setState(() {}),
                 ),
               const SizedBox(height: 12),
@@ -539,7 +1026,8 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton.icon(
-                  onPressed: _isUploading
+                  onPressed:
+                      _isBusy || _hasSuccessfulUpload || !_hasUploadableDrafts
                       ? null
                       : () => _uploadSelectedDrafts(),
                   icon: _isUploading
@@ -550,7 +1038,11 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
                         )
                       : const Icon(Icons.cloud_upload_outlined),
                   label: Text(
-                    _isUploading ? 'Uploading...' : 'Upload Selected Prices',
+                    _isUploading
+                        ? 'Uploading...'
+                        : _hasSuccessfulUpload
+                        ? 'Prices Already Uploaded'
+                        : 'Upload Selected Prices',
                   ),
                 ),
               ),
@@ -564,14 +1056,12 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
 
 class _PriceDraftCard extends StatelessWidget {
   final _PriceDraft draft;
-  final List<String> units;
-  final List<String> districts;
+  final bool enabled;
   final VoidCallback onChanged;
 
   const _PriceDraftCard({
     required this.draft,
-    required this.units,
-    required this.districts,
+    required this.enabled,
     required this.onChanged,
   });
 
@@ -590,79 +1080,57 @@ class _PriceDraftCard extends StatelessWidget {
               value: draft.selected,
               title: Text('Source: ${draft.sourceImage}'),
               subtitle: Text(draft.sourceLine),
-              onChanged: (value) {
-                draft.selected = value ?? true;
-                onChanged();
-              },
+              onChanged: enabled
+                  ? (value) {
+                      draft.selected = value ?? true;
+                      onChanged();
+                    }
+                  : null,
             ),
             const SizedBox(height: 8),
             TextFormField(
-              initialValue: draft.cropName,
+              initialValue: draft.date,
+              enabled: enabled,
               decoration: const InputDecoration(
-                labelText: 'Crop Name',
+                labelText: 'Date',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (value) => draft.date = value,
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              initialValue: draft.cropName,
+              enabled: enabled,
+              decoration: const InputDecoration(
+                labelText: 'Commodity',
                 border: OutlineInputBorder(),
               ),
               onChanged: (value) => draft.cropName = value,
             ),
             const SizedBox(height: 10),
             TextFormField(
-              initialValue: draft.price,
-              keyboardType: TextInputType.number,
+              initialValue: draft.district,
+              enabled: enabled,
               decoration: const InputDecoration(
-                labelText: 'Price (MK)',
+                labelText: 'Location',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (value) => draft.price = value,
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: units.contains(draft.unit)
-                  ? draft.unit
-                  : units.first,
-              decoration: const InputDecoration(
-                labelText: 'Unit',
-                border: OutlineInputBorder(),
-              ),
-              items: units
-                  .map(
-                    (unit) => DropdownMenuItem(value: unit, child: Text(unit)),
-                  )
-                  .toList(),
               onChanged: (value) {
-                draft.unit = value ?? units.first;
+                draft.district = value;
+                draft.marketName = value;
                 onChanged();
               },
             ),
             const SizedBox(height: 10),
             TextFormField(
-              initialValue: draft.marketName,
+              initialValue: draft.price,
+              enabled: enabled,
+              keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                labelText: 'Market Name',
+                labelText: 'Amount (MK)',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (value) => draft.marketName = value,
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: districts.contains(draft.district)
-                  ? draft.district
-                  : 'Lilongwe',
-              decoration: const InputDecoration(
-                labelText: 'District',
-                border: OutlineInputBorder(),
-              ),
-              items: districts
-                  .map(
-                    (district) => DropdownMenuItem(
-                      value: district,
-                      child: Text(district),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                draft.district = value ?? 'Lilongwe';
-                onChanged();
-              },
+              onChanged: (value) => draft.price = value,
             ),
           ],
         ),
@@ -696,44 +1164,18 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-class _OcrResultCard extends StatelessWidget {
-  final _OcrResult result;
-
-  const _OcrResultCard({required this.result});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              result.fileName,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            SelectableText(
-              result.text.isEmpty ? 'No readable text found.' : result.text,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OcrResult {
-  final String fileName;
+class _OcrLine {
   final String text;
+  final Rect box;
 
-  const _OcrResult({required this.fileName, required this.text});
+  const _OcrLine({required this.text, required this.box});
+
+  double get centerX => box.left + (box.width / 2);
+  double get centerY => box.top + (box.height / 2);
 }
 
 class _PriceDraft {
+  String date;
   String cropName;
   String price;
   String unit;
@@ -741,9 +1183,10 @@ class _PriceDraft {
   String district;
   final String sourceImage;
   final String sourceLine;
-  bool selected = true;
+  bool selected;
 
   _PriceDraft({
+    required this.date,
     required this.cropName,
     required this.price,
     required this.unit,
@@ -751,5 +1194,6 @@ class _PriceDraft {
     required this.district,
     required this.sourceImage,
     required this.sourceLine,
+    this.selected = true,
   });
 }
