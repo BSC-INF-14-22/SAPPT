@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:smart_agri_price_tracker/core/services/auth_service.dart';
 import 'package:smart_agri_price_tracker/core/services/firestore_service.dart';
 import 'package:smart_agri_price_tracker/core/routing/app_router.dart';
 import 'package:smart_agri_price_tracker/core/services/language_service.dart';
+import 'package:smart_agri_price_tracker/features/auth/domain/validators.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -25,6 +27,44 @@ class _LoginPageState extends State<LoginPage> {
 
   String _text(String english, String chichewa) {
     return _isChichewa ? chichewa : english;
+  }
+
+  String _loginErrorMessage(Object error) {
+    if (error is FirebaseAuthException) {
+      switch (error.code) {
+        case 'invalid-credential':
+        case 'wrong-password':
+        case 'user-not-found':
+          return _text(
+            'Invalid email/phone or password.',
+            'Imelo/foni kapena mawu achinsinsi ndi olakwika.',
+          );
+        case 'invalid-email':
+          return _text(
+            'Enter a valid email address.',
+            'Lembani imelo yolondola.',
+          );
+        case 'network-request-failed':
+          return _text(
+            'Login needs internet. Check your connection and try again.',
+            'Kulowa kufuna intaneti. Onani netiweki yanu ndipo yesaninso.',
+          );
+        default:
+          return _text(
+            'Login failed. Please try again.',
+            'Kulowa kwalephera. Chonde yesaninso.',
+          );
+      }
+    }
+
+    if (error is FirebaseException) {
+      return _text(
+        'Could not reach the server. Check your internet connection and try again.',
+        'Sitingathe kulumikizana ndi seva. Onani intaneti yanu ndipo yesaninso.',
+      );
+    }
+
+    return error.toString().replaceAll('Exception: ', '');
   }
 
   Future<void> _handleLogin() async {
@@ -76,6 +116,20 @@ class _LoginPageState extends State<LoginPage> {
 
       // 2. Sign in with Email and Password
       await AuthService().signIn(email: emailToSignIn!, password: password);
+      await AuthService().reloadCurrentUser();
+      final signedInUser = AuthService().currentUser;
+      if (signedInUser != null &&
+          !signedInUser.emailVerified &&
+          !isTestAdminEmail(signedInUser.email)) {
+        await AuthService().sendEmailVerification();
+        await AuthService().signOut();
+        throw Exception(
+          _text(
+            'Please verify your email before logging in. We sent a new verification link to your inbox.',
+            'Chonde tsimikizani imelo yanu musanalowe. Tatumiza ulalo watsopano wotsimikizira ku imelo yanu.',
+          ),
+        );
+      }
 
       // 3. Enforce approval for Cooperative Officers
       final uid = AuthService().currentUser?.uid;
@@ -114,7 +168,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+          content: Text(_loginErrorMessage(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -157,7 +211,7 @@ class _LoginPageState extends State<LoginPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+        ).showSnackBar(SnackBar(content: Text(_loginErrorMessage(e))));
       }
     }
   }

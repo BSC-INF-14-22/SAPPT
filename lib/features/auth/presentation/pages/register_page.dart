@@ -83,6 +83,64 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
+  String _registrationErrorMessage(Object error) {
+    if (error is FirebaseAuthException) {
+      switch (error.code) {
+        case 'email-already-in-use':
+          return _text(
+            'This email is already registered. Please login instead.',
+            'Imelo iyi inalembedwa kale. Chonde lowani.',
+          );
+        case 'invalid-email':
+          return _text(
+            'Enter a valid email address.',
+            'Lembani imelo yolondola.',
+          );
+        case 'weak-password':
+          return _text(
+            'Use a stronger password with at least 8 characters, a number, and a symbol.',
+            'Gwiritsani mawu achinsinsi amphamvu okhala ndi zilembo 8+, nambala ndi chizindikiro.',
+          );
+        case 'network-request-failed':
+          return _text(
+            'Registration needs internet. Check your connection and try again.',
+            'Kulembetsa kufuna intaneti. Onani netiweki yanu ndipo yesaninso.',
+          );
+        default:
+          return _text(
+            'Registration failed. Please check your details and try again.',
+            'Kulembetsa kwalephera. Onani zomwe mwalemba ndipo yesaninso.',
+          );
+      }
+    }
+
+    if (error is FirebaseException) {
+      switch (error.code) {
+        case 'unavailable':
+        case 'deadline-exceeded':
+          return _text(
+            'Could not reach the server. Check your internet connection and try again.',
+            'Sitingathe kulumikizana ndi seva. Onani intaneti yanu ndipo yesaninso.',
+          );
+        case 'permission-denied':
+          return _text(
+            'Registration could not save your profile. Please contact an administrator.',
+            'Kulembetsa sikunasunge mbiri yanu. Chonde funsani admin.',
+          );
+        default:
+          return _text(
+            'Registration could not finish. Please try again.',
+            'Kulembetsa sikunamalizike. Chonde yesaninso.',
+          );
+      }
+    }
+
+    return _text(
+      'Registration could not finish. Check your internet connection and try again.',
+      'Kulembetsa sikunamalizike. Onani intaneti yanu ndipo yesaninso.',
+    );
+  }
+
   Future<void> _handleRegister() async {
     if (!_registerFormKey.currentState!.validate()) return;
 
@@ -97,6 +155,7 @@ class _RegisterPageState extends State<RegisterPage> {
       if (credential?.user != null) {
         // 2. Save Additional Data to Firestore using UID as document ID
         final isCoop = _selectedRole == 'Cooperative Officer';
+        var verificationEmailSent = false;
         await FirestoreService().setData('users', credential!.user!.uid, {
           'uid': credential.user!.uid,
           'fullName': _nameController.text.trim(),
@@ -109,6 +168,7 @@ class _RegisterPageState extends State<RegisterPage> {
           'role': _selectedRole,
           'district': _selectedDistrict,
           'createdAt': DateTime.now().toIso8601String(),
+          'emailVerified': credential.user!.emailVerified,
           // Approval flags for Cooperative accounts
           'approved': isCoop ? false : true,
           'approvalStatus': isCoop ? 'pending' : 'approved',
@@ -118,8 +178,23 @@ class _RegisterPageState extends State<RegisterPage> {
           email: _emailController.text,
           uid: credential.user!.uid,
         );
+        try {
+          await AuthService().sendEmailVerification();
+          verificationEmailSent = true;
+        } catch (_) {
+          verificationEmailSent = false;
+        }
 
         if (mounted) {
+          final verificationMessage = verificationEmailSent
+              ? _text(
+                  'Check your inbox and verify your email before logging in.',
+                  'Yang\'anani imelo yanu ndi kutsimikiza musanalowe.',
+                )
+              : _text(
+                  'Your account was created, but the verification email could not be sent. Check your internet, then login to resend it.',
+                  'Akaunti yanu yapangidwa, koma imelo yotsimikizira sinatumizidwe. Onani intaneti, kenako lowani kuti itumizidwenso.',
+                );
           if (isCoop) {
             // Notify Admins to approve this cooperative
             await NotificationService().sendRoleBroadcast(
@@ -129,28 +204,28 @@ class _RegisterPageState extends State<RegisterPage> {
                   '${_nameController.text.trim()} registered as a Cooperative Officer and awaits approval.',
             );
 
-            // Sign the user out until admin approves the account
-            await AuthService().signOut();
-
             if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
                   _text(
-                    'Registration successful! Awaiting admin approval.',
-                    'Kulembetsa kwatheka! Kudikira kuvomerezedwa ndi admin.',
+                    'Registration successful! $verificationMessage Then wait for admin approval.',
+                    'Kulembetsa kwatheka! $verificationMessage Kenako dikirani kuvomerezedwa ndi admin.',
                   ),
                 ),
               ),
             );
             if (!mounted) return;
-            Navigator.pushReplacementNamed(context, AppRouter.login);
+            Navigator.pushReplacementNamed(context, AppRouter.home);
           } else {
             if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  _text('Registration successful!', 'Kulembetsa kwatheka!'),
+                  _text(
+                    'Registration successful! $verificationMessage',
+                    'Kulembetsa kwatheka! $verificationMessage',
+                  ),
                 ),
               ),
             );
@@ -159,32 +234,12 @@ class _RegisterPageState extends State<RegisterPage> {
           }
         }
       }
-    } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        String message = 'Registration failed: ${e.message}';
-        if (e.code == 'email-already-in-use') {
-          message = 'This email is already registered. Please login instead.';
-        }
-        if (_isChichewa) {
-          message = e.code == 'email-already-in-use'
-              ? 'Imelo iyi inalembedwa kale. Chonde lowani.'
-              : 'Kulembetsa kwalephera: ${e.message}';
-        }
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), backgroundColor: Colors.red),
-        );
-      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            _text(
-              'An unexpected error occurred: $e',
-              'Vuto losayembekezereka lachitika: $e',
-            ),
-          ),
+          content: Text(_registrationErrorMessage(e)),
+          backgroundColor: Colors.red,
         ),
       );
     } finally {

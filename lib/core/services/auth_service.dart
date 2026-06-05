@@ -17,6 +17,26 @@ class AuthService {
   /// Stream of auth state changes
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
+  /// Refresh the current Firebase user.
+  Future<void> reloadCurrentUser() async {
+    await _auth.currentUser?.reload();
+  }
+
+  /// Send Firebase email verification to the current user.
+  Future<void> sendEmailVerification() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'no-current-user',
+        message: 'No signed-in user available for email verification.',
+      );
+    }
+    if (!user.emailVerified) {
+      await user.sendEmailVerification();
+      debugPrint('Email verification sent to ${user.email ?? 'current user'}');
+    }
+  }
+
   /// Sign up with email and password
   Future<UserCredential?> signUp({
     required String email,

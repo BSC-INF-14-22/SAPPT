@@ -6,6 +6,7 @@ import 'package:smart_agri_price_tracker/features/auth/presentation/pages/landin
 import 'package:smart_agri_price_tracker/features/farmer/presentation/pages/farmer_dashboard.dart';
 import 'package:smart_agri_price_tracker/features/cooperative/presentation/pages/cooperative_dashboard.dart';
 import 'package:smart_agri_price_tracker/features/admin/presentation/pages/admin_dashboard.dart';
+import 'package:smart_agri_price_tracker/features/auth/domain/validators.dart';
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -26,6 +27,10 @@ class AuthWrapper extends StatelessWidget {
         if (user == null) {
           // If connection is still waiting, we might show a splash but Landing is safer to prevent black screen
           return const LandingPage();
+        }
+
+        if (!user.emailVerified && !isTestAdminEmail(user.email)) {
+          return _buildEmailVerificationScreen(context, user.email);
         }
 
         // If logged in, fetch role
@@ -128,6 +133,77 @@ class AuthWrapper extends StatelessWidget {
                   onPressed: () => _signOutToLanding(context),
                   child: const Text('Logout & Try Again'),
                 ),
+              TextButton(
+                onPressed: () => _signOutToLanding(context),
+                child: const Text('Back to Landing'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmailVerificationScreen(BuildContext context, String? email) {
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.mark_email_unread_outlined,
+                size: 64,
+                color: Color(0xFF2E7D32),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Verify your email',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'We sent a verification link to ${email ?? 'your email address'}. Check your inbox and spam folder, open the link, then come back and refresh.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 32),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  await AuthService().reloadCurrentUser();
+                  if (context.mounted) {
+                    Navigator.of(context).pushReplacementNamed(AppRouter.home);
+                  }
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('I Verified My Email'),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () async {
+                  try {
+                    await AuthService().sendEmailVerification();
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Verification email sent.')),
+                    );
+                  } catch (_) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Could not send verification email. Check your internet connection and try again.',
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.outgoing_mail),
+                label: const Text('Resend Email'),
+              ),
               TextButton(
                 onPressed: () => _signOutToLanding(context),
                 child: const Text('Back to Landing'),
