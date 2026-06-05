@@ -994,16 +994,25 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Detected Price Rows',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      'Detected Price Rows',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
                   TextButton.icon(
                     onPressed: _isBusy ? null : _clearDetectedRows,
                     icon: const Icon(Icons.clear_all),
-                    label: const Text('Clear'),
+                    label: const Text(
+                      'Clear',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -1023,25 +1032,30 @@ class _WhatsappMarketImportPageState extends State<WhatsappMarketImportPage> {
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
-                height: 54,
-                child: ElevatedButton.icon(
-                  onPressed:
-                      _isBusy || _hasSuccessfulUpload || !_hasUploadableDrafts
-                      ? null
-                      : () => _uploadSelectedDrafts(),
-                  icon: _isUploading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.cloud_upload_outlined),
-                  label: Text(
-                    _isUploading
-                        ? 'Uploading...'
-                        : _hasSuccessfulUpload
-                        ? 'Prices Already Uploaded'
-                        : 'Upload Selected Prices',
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 54),
+                  child: ElevatedButton.icon(
+                    onPressed:
+                        _isBusy || _hasSuccessfulUpload || !_hasUploadableDrafts
+                        ? null
+                        : () => _uploadSelectedDrafts(),
+                    icon: _isUploading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.cloud_upload_outlined),
+                    label: Text(
+                      _isUploading
+                          ? 'Uploading...'
+                          : _hasSuccessfulUpload
+                          ? 'Prices Already Uploaded'
+                          : 'Upload Selected Prices',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
               ),
@@ -1153,11 +1167,21 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 54,
-      child: ElevatedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon),
-        label: Text(label),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 54),
+        child: ElevatedButton.icon(
+          onPressed: onPressed,
+          icon: Icon(icon),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ),
+          label: Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ),
       ),
     );
   }
